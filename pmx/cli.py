@@ -106,8 +106,9 @@ def cmd_verify(name: str) -> None:
 @main.command("seed")
 def cmd_seed() -> None:
     """Download and build base VM + LXC templates on the cluster."""
-    click.echo("pmx seed not yet implemented", err=True)
-    sys.exit(NOT_IMPLEMENTED_EXIT)
+    from pmx import seed
+
+    sys.exit(seed.run())
 
 
 if __name__ == "__main__":
