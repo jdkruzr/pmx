@@ -1,0 +1,5 @@
+---
+sssd_simple_allow_groups:
+  - domain_admins
+sssd_default_shell: /bin/bash
+sssd_fallback_homedir: /home/%u
