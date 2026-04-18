@@ -18,5 +18,6 @@ def extra_vars_from(kwargs: dict[str, object]) -> dict[str, object]:
         "rbd_disk": kwargs["rbd_disk"],
         "extra_packages": [p for p in (kwargs["extra_packages"] or "").split(",") if p],
         "static_ip": kwargs["static_ip"],
+        "static_gw": kwargs["static_gw"],
         "domain_join": not kwargs["no_domain"],
     }

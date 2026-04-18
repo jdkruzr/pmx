@@ -26,6 +26,7 @@ class TestExtraVarsFrom:
             "rbd_disk": None,
             "extra_packages": "",
             "static_ip": None,
+            "static_gw": None,
             "no_domain": False,
             "dry_run": False,
         }
@@ -41,6 +42,7 @@ class TestExtraVarsFrom:
         assert result["rbd_disk"] is None
         assert result["extra_packages"] == []
         assert result["static_ip"] is None
+        assert result["static_gw"] is None
         assert result["domain_join"] is True
 
     def test_domain_join_false_when_no_domain_flag(self):
@@ -56,6 +58,7 @@ class TestExtraVarsFrom:
             "rbd_disk": None,
             "extra_packages": "",
             "static_ip": None,
+            "static_gw": None,
             "no_domain": True,
             "dry_run": False,
         }
@@ -75,6 +78,7 @@ class TestExtraVarsFrom:
             "rbd_disk": None,
             "extra_packages": "",
             "static_ip": None,
+            "static_gw": None,
             "no_domain": False,
             "dry_run": False,
         }
@@ -94,6 +98,7 @@ class TestExtraVarsFrom:
             "rbd_disk": None,
             "extra_packages": "curl,git,vim",
             "static_ip": None,
+            "static_gw": None,
             "no_domain": False,
             "dry_run": False,
         }
@@ -113,6 +118,7 @@ class TestExtraVarsFrom:
             "rbd_disk": None,
             "extra_packages": "",
             "static_ip": None,
+            "static_gw": None,
             "no_domain": False,
             "dry_run": False,
         }
@@ -134,9 +140,50 @@ class TestExtraVarsFrom:
             "static_ip": "192.168.9.80/24",
             "no_domain": False,
             "dry_run": False,
+            "static_gw": None,
         }
         result = extra_vars_from(kwargs)
         assert result["static_ip"] == "192.168.9.80/24"
+
+    def test_static_gw_included_in_output(self):
+        """Includes static_gw in the output."""
+        kwargs = {
+            "name": "test",
+            "kind": "vm",
+            "os_family": "ubuntu",
+            "cores": 2,
+            "memory": 2048,
+            "disk": 32,
+            "cephfs": [],
+            "rbd_disk": None,
+            "extra_packages": "",
+            "static_ip": "192.168.9.80/24",
+            "static_gw": "192.168.9.1",
+            "no_domain": False,
+            "dry_run": False,
+        }
+        result = extra_vars_from(kwargs)
+        assert result["static_gw"] == "192.168.9.1"
+
+    def test_static_gw_none_when_not_provided(self):
+        """Handles static_gw as None when not provided."""
+        kwargs = {
+            "name": "test",
+            "kind": "vm",
+            "os_family": "ubuntu",
+            "cores": 2,
+            "memory": 2048,
+            "disk": 32,
+            "cephfs": [],
+            "rbd_disk": None,
+            "extra_packages": "",
+            "static_ip": None,
+            "static_gw": None,
+            "no_domain": False,
+            "dry_run": False,
+        }
+        result = extra_vars_from(kwargs)
+        assert result["static_gw"] is None
 
 
 class TestCmdNew:
@@ -275,3 +322,74 @@ class TestCmdNew:
         assert extra_vars["extra_packages"] == ["curl", "git"]
         assert extra_vars["static_ip"] == "192.168.9.100/24"
         assert extra_vars["domain_join"] is True
+
+    @patch("pmx.credentials.ensure_ad_password")
+    def test_rbd_disk_rejects_lxc(self, mock_ensure_ad):
+        """--rbd-disk with --kind lxc exits 2 with VM-only error."""
+        runner = CliRunner()
+        result = runner.invoke(
+            cmd_new,
+            [
+                "--name", "test-lxc",
+                "--kind", "lxc",
+                "--os", "ubuntu",
+                "--rbd-disk", "10",
+                "--no-domain",
+            ],
+        )
+
+        assert result.exit_code == 2
+        assert "VM-only" in result.output
+
+    @patch("pmx.credentials.ensure_ad_password")
+    @patch("pmx.preflight.assert_name_available")
+    @patch("pmx.ansible_runner.run_playbook")
+    def test_rbd_disk_accepts_vm_dry_run(self, mock_run_playbook, mock_preflight, mock_ensure_ad):
+        """--rbd-disk with --kind vm on --dry-run exits 0."""
+        mock_run_playbook.return_value = 0
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cmd_new,
+            [
+                "--name", "test-vm",
+                "--kind", "vm",
+                "--os", "ubuntu",
+                "--rbd-disk", "10",
+                "--no-domain",
+                "--dry-run",
+            ],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 0
+        call_args = mock_run_playbook.call_args
+        extra_vars = call_args[0][1]
+        assert extra_vars["rbd_disk"] == 10
+
+    @patch("pmx.credentials.ensure_ad_password")
+    @patch("pmx.preflight.assert_name_available")
+    @patch("pmx.ansible_runner.run_playbook")
+    def test_static_gw_included_in_dry_run(self, mock_run_playbook, mock_preflight, mock_ensure_ad):
+        """--static-gw is included in extra-vars during dry-run."""
+        mock_run_playbook.return_value = 0
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cmd_new,
+            [
+                "--name", "test-vm",
+                "--kind", "vm",
+                "--os", "ubuntu",
+                "--static-ip", "192.168.9.80/24",
+                "--static-gw", "192.168.9.1",
+                "--no-domain",
+                "--dry-run",
+            ],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 0
+        call_args = mock_run_playbook.call_args
+        extra_vars = call_args[0][1]
+        assert extra_vars["static_gw"] == "192.168.9.1"

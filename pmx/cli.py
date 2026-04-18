@@ -59,6 +59,11 @@ def main() -> None:
     default=None,
     help="Static IP/CIDR (e.g. 192.168.9.80/24). Default: DHCP.",
 )
+@click.option(
+    "--static-gw",
+    default=None,
+    help="Gateway IP for --static-ip (default: first usable IP in the subnet, e.g. .1 for /24).",
+)
 @click.option("--no-domain", is_flag=True, help="Skip AD domain join.")
 @click.option("--dry-run", is_flag=True, hidden=True, help="Print the ansible command that would run.")
 def cmd_new(**kwargs: object) -> None:
@@ -73,6 +78,10 @@ def cmd_new(**kwargs: object) -> None:
 
     if not kwargs["no_domain"]:
         ensure_ad_password()
+
+    if kwargs["rbd_disk"] is not None and kwargs["kind"] == "lxc":
+        click.echo("--rbd-disk is VM-only; --kind lxc cannot attach raw RBD disks.", err=True)
+        sys.exit(2)
 
     assert_name_available(cfg, kwargs["name"])  # type: ignore[arg-type]
 
