@@ -12,7 +12,7 @@
       ansible.builtin.shell: |
         set -o pipefail
         printf '%s' "$AD_JOIN_PASSWORD" \
-        | ssh -o StrictHostKeyChecking=accept-new -o BatchMode=no \
+        | ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=10 \
               {{ 'ansible' if guest_kind == 'vm' else 'root' }}@{{ guest_ip }} \
               "sudo adcli delete-computer $(hostname -s) -U {{ ad_join_user }} --stdin-password --domain={{ ad_domain }} || echo 'adcli delete-computer failed (non-fatal)'"
       args:

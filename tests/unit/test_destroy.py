@@ -71,7 +71,7 @@ VMID STATUS LOCK NAME
     202 stopped      another-lxc
 """
 
-    with patch("subprocess.run") as mock_run:
+    with patch("pmx.destroy.subprocess.run") as mock_run:
         mock_result = MagicMock()
         mock_result.stdout = ssh_output
         mock_result.returncode = 0

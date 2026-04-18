@@ -15,7 +15,6 @@ import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator
 
 
 @dataclass(frozen=True)
@@ -52,10 +51,6 @@ def read_all(log_path: str | Path) -> list[GuestRecord]:
         raw = json.loads(line)
         records.append(GuestRecord(**raw))
     return records
-
-
-def iter_records(log_path: str | Path) -> Iterator[GuestRecord]:
-    yield from read_all(log_path)
 
 
 def find_by_name(log_path: str | Path, name: str) -> GuestRecord | None:

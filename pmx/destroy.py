@@ -61,7 +61,14 @@ def run(name: str, yes: bool) -> int:
 def _query_cluster(ssh_host: str) -> dict[str, tuple[int, str]]:
     """Return {name: (vmid, kind)} discovered via ssh qm list + pct list."""
     cmd = ["ssh", "-o", "BatchMode=yes", ssh_host, "qm list; echo ---; pct list"]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=15)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=15)
+    except subprocess.CalledProcessError as exc:
+        click.echo(f"Failed to query Proxmox: {exc.stderr}", err=True)
+        raise click.Abort() from exc
+    except subprocess.TimeoutExpired as exc:
+        click.echo(f"Timed out querying Proxmox ({ssh_host}).", err=True)
+        raise click.Abort() from exc
     guests: dict[str, tuple[int, str]] = {}
     kind = "vm"
     for line in result.stdout.splitlines():
