@@ -1,0 +1,51 @@
+---
+# Destroy sequence:
+#   1. (optional) ssh to guest and run `adcli delete-computer`
+#   2. stop + destroy the Proxmox resource on the node
+
+- name: Pre-destroy AD cleanup (if domain-joined and reachable)
+  hosts: localhost
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Run adcli delete-computer on the guest
+      ansible.builtin.shell: |
+        set -o pipefail
+        printf '%s' "$AD_JOIN_PASSWORD" \
+        | ssh -o StrictHostKeyChecking=accept-new -o BatchMode=no \
+              {{ 'ansible' if guest_kind == 'vm' else 'root' }}@{{ guest_ip }} \
+              "sudo adcli delete-computer $(hostname -s) -U {{ ad_join_user }} --stdin-password --domain={{ ad_domain }} || echo 'adcli delete-computer failed (non-fatal)'"
+      args:
+        executable: /bin/bash
+      when: domain_join | bool and guest_ip is not none
+      no_log: true
+      register: adcli_out
+      changed_when: adcli_out.rc == 0
+      failed_when: false
+
+- name: Destroy Proxmox resource
+  hosts: "{{ target_node }}"
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Stop VM
+      ansible.builtin.command: "qm stop {{ guest_vmid }}"
+      when: guest_kind == 'vm'
+      failed_when: false
+      changed_when: true
+
+    - name: Destroy VM
+      ansible.builtin.command: "qm destroy {{ guest_vmid }} --purge"
+      when: guest_kind == 'vm'
+      changed_when: true
+
+    - name: Stop LXC
+      ansible.builtin.command: "pct stop {{ guest_vmid }}"
+      when: guest_kind == 'lxc'
+      failed_when: false
+      changed_when: true
+
+    - name: Destroy LXC
+      ansible.builtin.command: "pct destroy {{ guest_vmid }} --purge"
+      when: guest_kind == 'lxc'
+      changed_when: true

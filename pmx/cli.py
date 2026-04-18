@@ -109,8 +109,8 @@ def cmd_new(**kwargs: object) -> None:
 @click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
 def cmd_destroy(name: str, yes: bool) -> None:
     """Destroy a guest (removes AD computer object and Proxmox resource)."""
-    click.echo(f"pmx destroy not yet implemented (name={name}, yes={yes})", err=True)
-    sys.exit(NOT_IMPLEMENTED_EXIT)
+    from pmx import destroy
+    sys.exit(destroy.run(name, yes))
 
 
 @main.command("reconfigure")
