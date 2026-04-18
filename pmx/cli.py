@@ -1,0 +1,104 @@
+"""pmx — Proxmox provisioning CLI.
+
+Subcommands:
+  new          create a VM or LXC and configure it end-to-end
+  destroy      remove a guest (AD computer object + Proxmox resource)
+  reconfigure  re-run the configure phase against an existing guest
+  verify       smoke-test a guest (id lookup, sudo, sssd)
+  seed         download and build base VM + LXC templates
+"""
+
+from __future__ import annotations
+
+import sys
+
+import click
+
+NOT_IMPLEMENTED_EXIT = 1
+
+
+@click.group(context_settings={"help_option_names": ["-h", "--help"]})
+@click.version_option()
+def main() -> None:
+    """Proxmox provisioning CLI."""
+
+
+@main.command("new")
+@click.option("--name", required=True, help="Guest hostname (primary key).")
+@click.option(
+    "--kind",
+    type=click.Choice(["vm", "lxc"]),
+    required=True,
+    help="Create a KVM VM or an LXC container.",
+)
+@click.option(
+    "--os",
+    "os_family",
+    type=click.Choice(["ubuntu", "rocky"]),
+    required=True,
+    help="Guest OS family (ubuntu = 24.04, rocky = 9).",
+)
+@click.option("--cores", type=int, default=2, show_default=True)
+@click.option("--memory", type=int, default=2048, show_default=True, help="RAM in MiB.")
+@click.option("--disk", type=int, default=32, show_default=True, help="Root disk in GiB.")
+@click.option(
+    "--cephfs",
+    multiple=True,
+    help="CephFS mount, format 'subpath:/guest/path'. Repeatable.",
+)
+@click.option("--rbd-disk", type=int, default=None, help="Extra RBD disk size in GiB (VM only).")
+@click.option(
+    "--extra-packages",
+    default="",
+    help="Comma-separated extra packages to install post-base.",
+)
+@click.option(
+    "--static-ip",
+    default=None,
+    help="Static IP/CIDR (e.g. 192.168.9.80/24). Default: DHCP.",
+)
+@click.option("--no-domain", is_flag=True, help="Skip AD domain join.")
+def cmd_new(**kwargs: object) -> None:
+    """Create a new guest."""
+    from pmx.credentials import ensure_ad_password
+
+    if not kwargs["no_domain"]:
+        ensure_ad_password()
+    click.echo(f"pmx new not yet implemented (args={kwargs})", err=True)
+    sys.exit(NOT_IMPLEMENTED_EXIT)
+
+
+@main.command("destroy")
+@click.argument("name")
+@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+def cmd_destroy(name: str, yes: bool) -> None:
+    """Destroy a guest (removes AD computer object and Proxmox resource)."""
+    click.echo(f"pmx destroy not yet implemented (name={name}, yes={yes})", err=True)
+    sys.exit(NOT_IMPLEMENTED_EXIT)
+
+
+@main.command("reconfigure")
+@click.argument("name")
+def cmd_reconfigure(name: str) -> None:
+    """Re-run the configure phase against an existing guest."""
+    click.echo(f"pmx reconfigure not yet implemented (name={name})", err=True)
+    sys.exit(NOT_IMPLEMENTED_EXIT)
+
+
+@main.command("verify")
+@click.argument("name")
+def cmd_verify(name: str) -> None:
+    """Run smoke tests against a domain-joined guest."""
+    click.echo(f"pmx verify not yet implemented (name={name})", err=True)
+    sys.exit(NOT_IMPLEMENTED_EXIT)
+
+
+@main.command("seed")
+def cmd_seed() -> None:
+    """Download and build base VM + LXC templates on the cluster."""
+    click.echo("pmx seed not yet implemented", err=True)
+    sys.exit(NOT_IMPLEMENTED_EXIT)
+
+
+if __name__ == "__main__":
+    main()
