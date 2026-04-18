@@ -41,4 +41,19 @@
         name: ad_join_rocky
       when: domain_join | bool and guest_os == 'rocky'
 
-    # Phase 6 adds cephfs/rbd/extras/static_ip; Phase 8 adds post_create_hook.
+    - name: Attach extra RBD disk (VM only)
+      ansible.builtin.include_role:
+        name: attach_rbd_disk
+      when: rbd_disk is not none
+
+    - name: Mount CephFS shares
+      ansible.builtin.include_role:
+        name: mount_cephfs
+      when: cephfs_mounts | default([]) | length > 0
+
+    - name: Install extra packages
+      ansible.builtin.include_role:
+        name: extra_packages
+      when: extra_packages | default([]) | length > 0
+
+    # Phase 8: post_create_hook
