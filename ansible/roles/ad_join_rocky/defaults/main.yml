@@ -1,0 +1,13 @@
+---
+ad_join_rocky_packages:
+  - realmd
+  - sssd
+  - sssd-tools
+  - sssd-ad
+  - oddjob
+  - oddjob-mkhomedir
+  - adcli
+  - krb5-workstation
+  - samba-common-tools
+  - authselect
+  - authselect-compat

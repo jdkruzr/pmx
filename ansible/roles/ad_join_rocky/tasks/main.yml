@@ -1,0 +1,54 @@
+---
+- name: Assert AD_JOIN_PASSWORD is set
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'AD_JOIN_PASSWORD') | length > 0
+    fail_msg: "$AD_JOIN_PASSWORD must be set."
+
+- name: Install AD join packages
+  ansible.builtin.dnf:
+    name: "{{ ad_join_rocky_packages }}"
+    state: present
+
+- name: Check whether host is already realm-joined
+  ansible.builtin.command: realm list
+  register: realm_list
+  changed_when: false
+  failed_when: false
+
+- name: Run realm join (skipped if already joined)
+  ansible.builtin.shell: >
+    set -o pipefail;
+    printf '%s' "$AD_JOIN_PASSWORD"
+    | realm join --unattended --stdin-password -U {{ ad_join_user }} {{ ad_domain }}
+  args:
+    executable: /bin/bash
+  # Ansible does not inherit the controller's env on remote tasks; the lookup
+  # runs on the controller where $AD_JOIN_PASSWORD is set. `no_log: true` below
+  # keeps the expanded value out of logs.
+  environment:
+    AD_JOIN_PASSWORD: "{{ lookup('env', 'AD_JOIN_PASSWORD') }}"
+  register: realm_join_result
+  when: ad_domain not in realm_list.stdout
+  # `no_log` hides the task output; the registered variable remains accessible
+  # to failed_when (which runs on the controller).
+  failed_when: realm_join_result.rc != 0 and 'Already joined' not in realm_join_result.stderr
+  no_log: true
+
+- name: Apply shared sssd.conf + sudoers drop-in
+  ansible.builtin.include_role:
+    name: ad_join_common
+    tasks_from: apply
+
+- name: Flush handlers so sssd restarts before PAM change
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable SSSD + mkhomedir via authselect
+  ansible.builtin.command: authselect select sssd with-mkhomedir --force
+  changed_when: true
+
+- name: Ensure oddjobd is enabled and running (needed by pam_oddjob_mkhomedir on Rocky)
+  ansible.builtin.systemd:
+    name: oddjobd
+    state: started
+    enabled: true
