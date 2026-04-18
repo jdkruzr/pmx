@@ -31,5 +31,14 @@
       ansible.builtin.include_role:
         name: common
 
-    # Phase 5 adds ad_join roles; Phase 6 adds cephfs/rbd/extras/static_ip;
-    # Phase 8 adds post_create_hook.
+    - name: Join guest to AD (Ubuntu)
+      ansible.builtin.include_role:
+        name: ad_join_ubuntu
+      when: domain_join | bool and guest_os == 'ubuntu'
+
+    - name: Join guest to AD (Rocky)
+      ansible.builtin.include_role:
+        name: ad_join_rocky
+      when: domain_join | bool and guest_os == 'rocky'
+
+    # Phase 6 adds cephfs/rbd/extras/static_ip; Phase 8 adds post_create_hook.
