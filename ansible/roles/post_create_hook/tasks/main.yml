@@ -1,0 +1,46 @@
+---
+- name: Build post-hook payload
+  ansible.builtin.set_fact:
+    pmx_state_record:
+      hostname: "{{ guest_name }}"
+      vmid: "{{ guest_vmid | int }}"
+      mac: "{{ guest_mac | default('') }}"
+      ip: "{{ ansible_host }}"
+      kind: "{{ guest_kind }}"
+      os: "{{ guest_os }}"
+      domain_joined: "{{ domain_join | bool }}"
+      cephfs_mounts: "{{ cephfs_mounts | default([]) }}"
+      rbd_disk: "{{ rbd_disk | default(None) }}"
+      extra_packages: "{{ extra_packages | default([]) }}"
+      static_ip: "{{ static_ip | default(None) }}"
+      static_gw: "{{ static_gw | default(None) }}"
+      created_at: "{{ ansible_date_time.iso8601 }}"
+
+- name: Ensure state/ directory exists on workstation
+  ansible.builtin.file:
+    path: "{{ state_log_path | dirname }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+
+- name: Append record to state log (one JSON line per successful build)
+  ansible.builtin.lineinfile:
+    path: "{{ state_log_path }}"
+    line: "{{ pmx_state_record | to_json(sort_keys=True) }}"
+    create: true
+    mode: "0644"
+    # Always-append behavior: use a unique regexp that matches this run only.
+    # The created_at timestamp makes each line unique, so lineinfile never
+    # "updates" an existing line and always appends new ones.
+    insertafter: EOF
+    state: present
+  delegate_to: localhost
+  become: false
+
+# Future extensions plug in below. Example (commented):
+# - name: Register DHCP reservation with Zentyal
+#   ansible.builtin.include_tasks: zentyal_dhcp.yml
+#   delegate_to: localhost
+#   become: false
+#   when: dhcp_reservations_enabled | default(false)

@@ -1,0 +1,5 @@
+---
+# Absolute path on the workstation. The CLI resolves this from
+# ~/.config/pmx/config.yml:state_log_path (default: "state/guests.jsonl"
+# relative to the repo root) and passes it as an extra-var.
+state_log_path: "{{ playbook_dir | dirname }}/state/guests.jsonl"
