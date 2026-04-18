@@ -8,7 +8,7 @@
 # See ansible/group_vars/all.yml for defaults.
 
 - name: Create guest on Proxmox
-  hosts: proxmox
+  hosts: "{{ target_node }}"
   gather_facts: false
   become: false
   tasks:

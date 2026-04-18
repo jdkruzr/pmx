@@ -14,6 +14,16 @@ from pmx.config import Config
 
 def assert_name_available(cfg: Config, name: str) -> None:
     """Abort if a VM or LXC with the given name already exists on the cluster."""
+    # Validate name matches ^[a-zA-Z0-9][a-zA-Z0-9-]*$ (alphanumeric + hyphens, must start with alphanumeric)
+    import re
+    if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9-]*$", name):
+        click.echo(
+            f"Invalid guest name '{name}'. Names must start with alphanumeric and "
+            f"contain only alphanumeric characters and hyphens.",
+            err=True,
+        )
+        raise click.Abort()
+
     cmd = [
         "ssh",
         "-o", "BatchMode=yes",
@@ -41,7 +51,12 @@ def assert_name_available(cfg: Config, name: str) -> None:
 
 
 def _parse_names(qm_pct_output: str) -> set[str]:
-    """Extract guest names from the output of `qm list; echo ---; pct list`."""
+    """Extract guest names from the output of `qm list; echo ---; pct list`.
+
+    NOTE: This is a heuristic against pct list output and may need updating if Proxmox
+    adds new container states. Current recognized status words: running, stopped, suspended,
+    paused, mounted.
+    """
     names: set[str] = set()
     in_qm_section = True  # Start with qm list section
 
@@ -66,10 +81,10 @@ def _parse_names(qm_pct_output: str) -> set[str]:
         if in_qm_section and len(parts) > 1:
             names.add(parts[1])
         # In pct list: VMID STATUS [LOCK] NAME
-        # Filter out numeric fields (LOCK column) and pure-status words (running/stopped)
+        # Filter out numeric fields (LOCK column) and pure-status words (running/stopped/suspended/paused/mounted)
         # Take the last field that contains hyphens or is longer and not a status word
         elif not in_qm_section and len(parts) > 1:
-            status_words = {"running", "stopped"}
+            status_words = {"running", "stopped", "suspended", "paused", "mounted"}
             candidates = [
                 p for p in parts[1:]
                 if (p.replace("-", "").isalnum() and not p.isdigit() and p not in status_words)

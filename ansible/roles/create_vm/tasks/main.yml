@@ -114,6 +114,17 @@
     msg: "Guest {{ guest_name }} (VMID {{ new_vmid }}) did not acquire an IPv4 address via guest agent."
   when: guest_ip is none or guest_ip == ""
 
+- name: Find MAC address matching guest_ip
+  ansible.builtin.set_fact:
+    guest_mac: "{{ lookup('ansible.builtin.vars', 'guest_mac_result', default='') }}"
+  vars:
+    guest_mac_result: "{% set ns = namespace(mac='') %}{% for iface in (interfaces_raw.stdout | from_json) %}{% if iface['name'] != 'lo' and iface.get('ip-addresses') %}{% for addr in iface['ip-addresses'] %}{% if addr.get('ip-address') == guest_ip and addr.get('ip-address-type') == 'ipv4' %}{% set ns.mac = iface['hardware-address'] %}{% endif %}{% endfor %}{% endif %}{% endfor %}{{ ns.mac }}"
+
+- name: Fail if MAC could not be determined
+  ansible.builtin.fail:
+    msg: "Could not determine MAC address for interface with IP {{ guest_ip }}"
+  when: guest_mac | length == 0
+
 - name: Add new guest to in-memory inventory as `just_created`
   ansible.builtin.add_host:
     name: "{{ guest_name }}"
@@ -126,7 +137,7 @@
     guest_vmid: "{{ new_vmid }}"
     guest_kind: "{{ guest_kind }}"
     guest_os: "{{ guest_os }}"
-    guest_mac: "{{ (interfaces_raw.stdout | from_json | selectattr('name', 'ne', 'lo') | first)['hardware-address'] }}"
+    guest_mac: "{{ guest_mac }}"
     domain_join: "{{ domain_join }}"
     ad_domain: "{{ ad_domain }}"
     ad_realm: "{{ ad_realm }}"

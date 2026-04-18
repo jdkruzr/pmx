@@ -193,3 +193,97 @@ class TestAssertNameAvailable:
 
         with pytest.raises(click.Abort):
             assert_name_available(cfg, "newhost")
+
+    def test_assert_name_available_rejects_invalid_names(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Given invalid name (starting with hyphen, containing spaces, etc), assert_name_available raises click.Abort."""
+        cfg = Config(
+            proxmox_ssh_host="root@192.168.9.12",
+            proxmox_api_host="192.168.9.12",
+            default_node="pve01",
+            default_storage="bwrx",
+            default_lxc_storage="cephfs",
+            default_bridge="vmbr0",
+            ad_domain="broken.wrx",
+            ad_realm="BROKEN.WRX",
+            ad_join_user="jtd",
+            ceph_conf_path="/etc/ceph/ceph.conf",
+            ceph_secret_path="/etc/ceph/cephfs.secret",
+            ceph_mons=["192.168.9.11"],
+            state_log_path="state/guests.jsonl",
+        )
+
+        # Should not make SSH call — fail before that
+        import subprocess
+        mock_run = MagicMock()
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        # Test various invalid patterns
+        invalid_names = ["-invalid", "name_underscore", "name with spaces", "name.dot", ""]
+        for invalid_name in invalid_names:
+            with pytest.raises(click.Abort):
+                assert_name_available(cfg, invalid_name)
+            # Mock should not have been called for invalid names
+        assert mock_run.call_count == 0
+
+    def test_assert_name_available_accepts_valid_names(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Given valid names (alphanumeric + hyphens starting with alphanumeric), assert_name_available doesn't reject early."""
+        cfg = Config(
+            proxmox_ssh_host="root@192.168.9.12",
+            proxmox_api_host="192.168.9.12",
+            default_node="pve01",
+            default_storage="bwrx",
+            default_lxc_storage="cephfs",
+            default_bridge="vmbr0",
+            ad_domain="broken.wrx",
+            ad_realm="BROKEN.WRX",
+            ad_join_user="jtd",
+            ceph_conf_path="/etc/ceph/ceph.conf",
+            ceph_secret_path="/etc/ceph/cephfs.secret",
+            ceph_mons=["192.168.9.11"],
+            state_log_path="state/guests.jsonl",
+        )
+
+        import subprocess
+        mock_run = MagicMock()
+        mock_run.return_value.stdout = ""
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        # Valid names should pass validation and attempt SSH call
+        valid_names = ["myhost", "test-vm-01", "a", "ABC123", "host1-2-3"]
+        for valid_name in valid_names:
+            assert_name_available(cfg, valid_name)
+
+    def test_assert_name_available_checks_ssh_invocation(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Given valid name, assert_name_available invokes SSH with proper arguments."""
+        cfg = Config(
+            proxmox_ssh_host="root@192.168.9.12",
+            proxmox_api_host="192.168.9.12",
+            default_node="pve01",
+            default_storage="bwrx",
+            default_lxc_storage="cephfs",
+            default_bridge="vmbr0",
+            ad_domain="broken.wrx",
+            ad_realm="BROKEN.WRX",
+            ad_join_user="jtd",
+            ceph_conf_path="/etc/ceph/ceph.conf",
+            ceph_secret_path="/etc/ceph/cephfs.secret",
+            ceph_mons=["192.168.9.11"],
+            state_log_path="state/guests.jsonl",
+        )
+
+        import subprocess
+        mock_run = MagicMock()
+        mock_run.return_value.stdout = ""
+        monkeypatch.setattr(subprocess, "run", mock_run)
+
+        assert_name_available(cfg, "testhost")
+
+        # Verify mock was called once
+        assert mock_run.call_count == 1
+        # Get the command list (first positional arg)
+        call_args = mock_run.call_args
+        cmd = call_args[0][0]  # First positional argument is the command list
+        # Check command contains SSH host
+        assert cfg.proxmox_ssh_host in cmd
+        # Check command contains BatchMode=yes
+        assert "BatchMode=yes" in cmd
