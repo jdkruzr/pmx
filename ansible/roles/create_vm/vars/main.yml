@@ -1,0 +1,4 @@
+# OS → seed-VMID table, not user-configurable
+seed_vmids:
+  ubuntu: 9000
+  rocky: 9001

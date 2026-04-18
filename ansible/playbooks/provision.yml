@@ -8,11 +8,27 @@
 - name: Create guest on Proxmox
   hosts: proxmox
   gather_facts: false
-  # Phase 3 (VM) and Phase 4 (LXC) populate this play with create_vm / create_lxc roles.
-  tasks: []
+  become: false
+  tasks:
+    - name: Create VM
+      ansible.builtin.include_role:
+        name: create_vm
+      when: guest_kind == "vm"
+
+    # Phase 4 adds:
+    # - name: Create LXC
+    #   ansible.builtin.include_role:
+    #     name: create_lxc
+    #   when: guest_kind == "lxc"
 
 - name: Configure guest
   hosts: just_created
   gather_facts: true
-  # Phase 5 wires in common + ad_join roles; Phase 6 wires in optional add-ons.
-  tasks: []
+  become: true
+  tasks:
+    - name: Run common bootstrap (upgrade + base packages)
+      ansible.builtin.include_role:
+        name: common
+
+    # Phase 5 adds ad_join roles; Phase 6 adds cephfs/rbd/extras/static_ip;
+    # Phase 8 adds post_create_hook.

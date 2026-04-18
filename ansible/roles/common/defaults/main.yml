@@ -1,0 +1,12 @@
+common_base_packages_ubuntu:
+  - tmux
+  - ca-certificates
+  - curl
+  - python3
+  - qemu-guest-agent
+common_base_packages_rocky:
+  - tmux
+  - ca-certificates
+  - curl
+  - python3
+  - qemu-guest-agent

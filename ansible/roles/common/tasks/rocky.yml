@@ -1,0 +1,17 @@
+---
+- name: dnf upgrade
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+    update_cache: true
+
+- name: Install base packages
+  ansible.builtin.dnf:
+    name: "{{ common_base_packages_rocky }}"
+    state: present
+
+- name: Enable and start qemu-guest-agent
+  ansible.builtin.systemd:
+    name: qemu-guest-agent
+    state: started
+    enabled: true
