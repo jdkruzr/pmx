@@ -63,19 +63,41 @@ def main() -> None:
 @click.option("--dry-run", is_flag=True, hidden=True, help="Print the ansible command that would run.")
 def cmd_new(**kwargs: object) -> None:
     """Create a new guest."""
+    from pmx.config import load
     from pmx.credentials import ensure_ad_password
     from pmx.ansible_runner import run_playbook
+    from pmx.preflight import assert_name_available
     from pmx.translate import extra_vars_from
+
+    cfg = load()
 
     if not kwargs["no_domain"]:
         ensure_ad_password()
 
+    assert_name_available(cfg, kwargs["name"])  # type: ignore[arg-type]
+
+    extra_vars = extra_vars_from(kwargs) | {
+        "target_node": cfg.default_node,
+        "default_storage": cfg.default_storage,
+        "default_lxc_storage": cfg.default_lxc_storage,
+        "default_bridge": cfg.default_bridge,
+        "ad_domain": cfg.ad_domain,
+        "ad_realm": cfg.ad_realm,
+        "ad_join_user": cfg.ad_join_user,
+        "proxmox_api_host": cfg.proxmox_api_host,
+    }
+
     if kwargs["dry_run"]:
-        rc = run_playbook("provision.yml", extra_vars_from(kwargs), dry_run=True)
+        rc = run_playbook("provision.yml", extra_vars, dry_run=True)
         sys.exit(rc)
 
-    click.echo(f"pmx new not yet implemented (args={kwargs})", err=True)
-    sys.exit(NOT_IMPLEMENTED_EXIT)
+    # LXC kind still falls through to stub until Phase 4 lands.
+    if kwargs["kind"] == "lxc":
+        click.echo("pmx new --kind lxc not yet implemented (Phase 4).", err=True)
+        sys.exit(NOT_IMPLEMENTED_EXIT)
+
+    rc = run_playbook("provision.yml", extra_vars)
+    sys.exit(rc)
 
 
 @main.command("destroy")

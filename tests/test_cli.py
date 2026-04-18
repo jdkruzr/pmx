@@ -143,8 +143,9 @@ class TestCmdNew:
     """Test the cmd_new command."""
 
     @patch("pmx.credentials.ensure_ad_password")
+    @patch("pmx.preflight.assert_name_available")
     @patch("pmx.ansible_runner.run_playbook")
-    def test_dry_run_calls_run_playbook_with_dry_run(self, mock_run_playbook, mock_ensure_ad):
+    def test_dry_run_calls_run_playbook_with_dry_run(self, mock_run_playbook, mock_preflight, mock_ensure_ad):
         """--dry-run calls run_playbook with dry_run=True."""
         mock_run_playbook.return_value = 0
 
@@ -163,6 +164,8 @@ class TestCmdNew:
 
         # Should exit with code 0 (not the NOT_IMPLEMENTED_EXIT of 1)
         assert result.exit_code == 0
+        # Should call preflight check
+        mock_preflight.assert_called_once()
         # Should call run_playbook with dry_run=True
         mock_run_playbook.assert_called_once()
         call_args = mock_run_playbook.call_args
@@ -170,8 +173,12 @@ class TestCmdNew:
         assert call_args[1]["dry_run"] is True
 
     @patch("pmx.credentials.ensure_ad_password")
-    def test_without_dry_run_prints_not_implemented(self, mock_ensure_ad):
-        """Without --dry-run, command prints 'not yet implemented' and exits 1."""
+    @patch("pmx.preflight.assert_name_available")
+    @patch("pmx.ansible_runner.run_playbook")
+    def test_without_dry_run_calls_playbook_for_vm(self, mock_run_playbook, mock_preflight, mock_ensure_ad):
+        """Without --dry-run, calls run_playbook for VM creation."""
+        mock_run_playbook.return_value = 0
+
         runner = CliRunner()
         result = runner.invoke(
             cmd_new,
@@ -179,12 +186,19 @@ class TestCmdNew:
                 "--name", "test-vm",
                 "--kind", "vm",
                 "--os", "ubuntu",
+                "--no-domain",
             ],
-            env={"AD_JOIN_PASSWORD": "test"},
+            catch_exceptions=False,
         )
 
-        assert result.exit_code == 1
-        assert "not yet implemented" in result.output
+        assert result.exit_code == 0
+        # Should call preflight check
+        mock_preflight.assert_called_once()
+        # Should call run_playbook without dry_run
+        mock_run_playbook.assert_called_once()
+        call_args = mock_run_playbook.call_args
+        assert call_args[0][0] == "provision.yml"
+        assert "dry_run" not in call_args[1] or call_args[1].get("dry_run") is False
 
     @patch("pmx.credentials.ensure_ad_password")
     def test_prompts_for_password_when_not_domain_false(self, mock_ensure_ad):
