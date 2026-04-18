@@ -1,0 +1,2 @@
+default_storage: bwrx
+rbd_disk_slot: scsi1

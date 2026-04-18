@@ -1,0 +1,16 @@
+---
+- name: Short-circuit if no RBD disk requested
+  ansible.builtin.meta: end_host
+  when: rbd_disk is none
+
+- name: Attach RBD disk (VM only)
+  ansible.builtin.fail:
+    msg: "--rbd-disk is VM-only; the CLI should have rejected this combo in Phase 6 Task 1."
+  when: guest_kind != 'vm'
+
+- name: Attach RBD-backed disk via qm set
+  ansible.builtin.command: >
+    qm set {{ guest_vmid }}
+    --{{ rbd_disk_slot }} {{ default_storage }}:{{ rbd_disk }}
+  delegate_to: "{{ target_node }}"
+  changed_when: true
