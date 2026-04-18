@@ -13,6 +13,7 @@ Subcommands:
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 import click
 
@@ -94,6 +95,7 @@ def cmd_new(**kwargs: object) -> None:
         "ad_realm": cfg.ad_realm,
         "ad_join_user": cfg.ad_join_user,
         "proxmox_api_host": cfg.proxmox_api_host,
+        "state_log_path": str(Path(__file__).resolve().parent.parent / cfg.state_log_path),
     }
 
     if kwargs["dry_run"]:
