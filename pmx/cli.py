@@ -58,12 +58,19 @@ def main() -> None:
     help="Static IP/CIDR (e.g. 192.168.9.80/24). Default: DHCP.",
 )
 @click.option("--no-domain", is_flag=True, help="Skip AD domain join.")
+@click.option("--dry-run", is_flag=True, hidden=True, help="Print the ansible command that would run.")
 def cmd_new(**kwargs: object) -> None:
     """Create a new guest."""
     from pmx.credentials import ensure_ad_password
+    from pmx.ansible_runner import run_playbook
 
     if not kwargs["no_domain"]:
         ensure_ad_password()
+
+    if kwargs["dry_run"]:
+        rc = run_playbook("provision.yml", _extra_vars_from(kwargs), dry_run=True)
+        sys.exit(rc)
+
     click.echo(f"pmx new not yet implemented (args={kwargs})", err=True)
     sys.exit(NOT_IMPLEMENTED_EXIT)
 
@@ -98,6 +105,23 @@ def cmd_seed() -> None:
     """Download and build base VM + LXC templates on the cluster."""
     click.echo("pmx seed not yet implemented", err=True)
     sys.exit(NOT_IMPLEMENTED_EXIT)
+
+
+def _extra_vars_from(kwargs: dict[str, object]) -> dict[str, object]:
+    """Translate click kwargs into the ansible extra-vars contract."""
+    return {
+        "guest_name": kwargs["name"],
+        "guest_kind": kwargs["kind"],
+        "guest_os": kwargs["os_family"],
+        "cores": kwargs["cores"],
+        "memory": kwargs["memory"],
+        "disk": kwargs["disk"],
+        "cephfs_mounts": [c for c in kwargs["cephfs"]] if kwargs["cephfs"] else [],
+        "rbd_disk": kwargs["rbd_disk"],
+        "extra_packages": [p for p in (kwargs["extra_packages"] or "").split(",") if p],
+        "static_ip": kwargs["static_ip"],
+        "domain_join": not kwargs["no_domain"],
+    }
 
 
 if __name__ == "__main__":
