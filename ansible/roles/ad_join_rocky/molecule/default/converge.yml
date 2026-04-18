@@ -1,0 +1,19 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  pre_tasks:
+    - name: Install the stub realm binary
+      ansible.builtin.copy:
+        src: mocks/realm.sh
+        dest: /usr/sbin/realm
+        mode: "0755"
+    - name: Install python3 and systemd deps (base rockylinux:9 image is minimal)
+      ansible.builtin.dnf:
+        name:
+          - python3
+          - systemd
+          - sudo
+        state: present
+  roles:
+    - name: ad_join_rocky

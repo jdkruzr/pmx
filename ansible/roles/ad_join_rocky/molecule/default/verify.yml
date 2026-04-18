@@ -1,0 +1,39 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: sssd.conf is present, mode 0600
+      ansible.builtin.stat:
+        path: /etc/sssd/sssd.conf
+      register: sssd_stat
+    - ansible.builtin.assert:
+        that:
+          - sssd_stat.stat.exists
+          - sssd_stat.stat.mode == "0600"
+
+    - name: sssd.conf contains override_space and simple_allow_groups
+      ansible.builtin.shell: |
+        set -e
+        grep -q 'override_space = _' /etc/sssd/sssd.conf
+        grep -q 'simple_allow_groups = domain_admins' /etc/sssd/sssd.conf
+      changed_when: false
+
+    - name: sudoers drop-in is present and validates
+      ansible.builtin.stat:
+        path: /etc/sudoers.d/domain-admins
+      register: sudo_stat
+    - ansible.builtin.assert:
+        that:
+          - sudo_stat.stat.exists
+          - sudo_stat.stat.mode == "0440"
+
+    - name: visudo -cf validates the drop-in (AC7.1)
+      ansible.builtin.command: /usr/sbin/visudo -cf /etc/sudoers.d/domain-admins
+      changed_when: false
+
+    - name: authselect enabled pam_oddjob_mkhomedir (AC5.1 wiring for Rocky)
+      ansible.builtin.shell: |
+        set -e
+        grep -q 'pam_oddjob_mkhomedir' /etc/pam.d/system-auth
+      changed_when: false

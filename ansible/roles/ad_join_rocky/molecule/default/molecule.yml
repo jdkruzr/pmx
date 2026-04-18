@@ -1,0 +1,31 @@
+---
+dependency:
+  name: galaxy
+driver:
+  name: podman
+platforms:
+  - name: pmx-rocky
+    image: docker.io/library/rockylinux:9
+    pre_build_image: true
+    privileged: true
+    command: /lib/systemd/systemd
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    capabilities:
+      - SYS_ADMIN
+    systemd: always
+    tmpfs:
+      - /run
+      - /tmp
+provisioner:
+  name: ansible
+  env:
+    AD_JOIN_PASSWORD: testpw
+  inventory:
+    group_vars:
+      all:
+        ad_domain: test.example
+        ad_realm: TEST.EXAMPLE
+        ad_join_user: testuser
+verifier:
+  name: ansible

@@ -1,0 +1,21 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  pre_tasks:
+    - name: Install the stub realm binary
+      ansible.builtin.copy:
+        src: mocks/realm.sh
+        dest: /usr/sbin/realm
+        mode: "0755"
+    - name: Install python3 and systemd deps (base ubuntu:24.04 image is minimal)
+      ansible.builtin.apt:
+        name:
+          - python3
+          - python3-apt
+          - dbus
+          - systemd
+          - sudo
+        update_cache: true
+  roles:
+    - name: ad_join_ubuntu
