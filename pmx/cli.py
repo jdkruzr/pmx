@@ -117,8 +117,8 @@ def cmd_destroy(name: str, yes: bool) -> None:
 @click.argument("name")
 def cmd_reconfigure(name: str) -> None:
     """Re-run the configure phase against an existing guest."""
-    click.echo(f"pmx reconfigure not yet implemented (name={name})", err=True)
-    sys.exit(NOT_IMPLEMENTED_EXIT)
+    from pmx import reconfigure
+    sys.exit(reconfigure.run(name))
 
 
 @main.command("verify")

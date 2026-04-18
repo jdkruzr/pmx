@@ -1,0 +1,35 @@
+---
+- name: Configure guest
+  hosts: just_created
+  gather_facts: true
+  become: "{{ guest_kind == 'vm' }}"
+  tasks:
+    - name: Run common bootstrap (upgrade + base packages)
+      ansible.builtin.include_role:
+        name: common
+
+    - name: Join guest to AD (Ubuntu)
+      ansible.builtin.include_role:
+        name: ad_join_ubuntu
+      when: domain_join | bool and guest_os == 'ubuntu'
+
+    - name: Join guest to AD (Rocky)
+      ansible.builtin.include_role:
+        name: ad_join_rocky
+      when: domain_join | bool and guest_os == 'rocky'
+
+    - name: Attach extra RBD disk (VM only)
+      ansible.builtin.include_role:
+        name: attach_rbd_disk
+      when: rbd_disk is not none
+
+    - name: Mount CephFS shares
+      ansible.builtin.include_role:
+        name: mount_cephfs
+      when: cephfs_mounts | default([]) | length > 0
+
+    # The `extra_packages` extra-var (list) and the role of the same name share a name intentionally.
+    - name: Install extra packages
+      ansible.builtin.include_role:
+        name: extra_packages
+      when: extra_packages | default([]) | length > 0

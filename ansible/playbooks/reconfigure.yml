@@ -1,0 +1,33 @@
+---
+# Reconfigure an existing guest. The first play re-hydrates the dynamic
+# inventory from state/guests.jsonl via the CLI-supplied extra-vars; the
+# second play reuses the shared configure playbook.
+
+- name: Register existing guest in dynamic inventory
+  hosts: localhost
+  gather_facts: false
+  become: false
+  tasks:
+    - name: add_host for existing guest
+      ansible.builtin.add_host:
+        name: "{{ guest_name }}"
+        ansible_host: "{{ guest_ip }}"
+        ansible_user: "{{ 'ansible' if guest_kind == 'vm' else 'root' }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new"
+        groups: just_created
+        guest_vmid: "{{ guest_vmid }}"
+        guest_kind: "{{ guest_kind }}"
+        guest_os: "{{ guest_os }}"
+        guest_mac: "{{ guest_mac }}"
+        domain_join: "{{ domain_join }}"
+        ad_domain: "{{ ad_domain }}"
+        ad_realm: "{{ ad_realm }}"
+        ad_join_user: "{{ ad_join_user }}"
+        cephfs_mounts: "{{ cephfs_mounts }}"
+        rbd_disk: "{{ rbd_disk }}"
+        extra_packages: "{{ extra_packages }}"
+        static_ip: "{{ static_ip }}"
+        static_gw: "{{ static_gw }}"
+
+- name: Configure guest
+  ansible.builtin.import_playbook: _configure.yml
