@@ -5,6 +5,8 @@ typed loader so subcommands can pull settings without parsing YAML
 everywhere.
 """
 
+# FCIS: functional core
+
 from __future__ import annotations
 
 import os

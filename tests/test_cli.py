@@ -6,11 +6,12 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from pmx.cli import cmd_new, _extra_vars_from
+from pmx.cli import cmd_new
+from pmx.translate import extra_vars_from
 
 
 class TestExtraVarsFrom:
-    """Test the _extra_vars_from helper function."""
+    """Test the extra_vars_from helper function."""
 
     def test_basic_conversion(self):
         """Converts click kwargs to ansible extra-vars contract."""
@@ -28,7 +29,7 @@ class TestExtraVarsFrom:
             "no_domain": False,
             "dry_run": False,
         }
-        result = _extra_vars_from(kwargs)
+        result = extra_vars_from(kwargs)
 
         assert result["guest_name"] == "test-vm"
         assert result["guest_kind"] == "vm"
@@ -58,7 +59,7 @@ class TestExtraVarsFrom:
             "no_domain": True,
             "dry_run": False,
         }
-        result = _extra_vars_from(kwargs)
+        result = extra_vars_from(kwargs)
         assert result["domain_join"] is False
 
     def test_cephfs_mounts_conversion(self):
@@ -77,7 +78,7 @@ class TestExtraVarsFrom:
             "no_domain": False,
             "dry_run": False,
         }
-        result = _extra_vars_from(kwargs)
+        result = extra_vars_from(kwargs)
         assert result["cephfs_mounts"] == ["subpath1:/mnt1", "subpath2:/mnt2"]
 
     def test_extra_packages_comma_separated(self):
@@ -96,7 +97,7 @@ class TestExtraVarsFrom:
             "no_domain": False,
             "dry_run": False,
         }
-        result = _extra_vars_from(kwargs)
+        result = extra_vars_from(kwargs)
         assert result["extra_packages"] == ["curl", "git", "vim"]
 
     def test_extra_packages_empty_string(self):
@@ -115,7 +116,7 @@ class TestExtraVarsFrom:
             "no_domain": False,
             "dry_run": False,
         }
-        result = _extra_vars_from(kwargs)
+        result = extra_vars_from(kwargs)
         assert result["extra_packages"] == []
 
     def test_static_ip_preserved(self):
@@ -134,7 +135,7 @@ class TestExtraVarsFrom:
             "no_domain": False,
             "dry_run": False,
         }
-        result = _extra_vars_from(kwargs)
+        result = extra_vars_from(kwargs)
         assert result["static_ip"] == "192.168.9.80/24"
 
 

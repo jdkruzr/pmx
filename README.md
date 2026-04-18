@@ -26,6 +26,8 @@ This is early-phase scaffolding. Subcommands (`new`, `destroy`,
 `reconfigure`, `verify`, `seed`) all exit with "not yet implemented"
 until their respective implementation phases land.
 
+Internal: `pmx new ... --dry-run` prints the constructed ansible-playbook command (hidden flag, for debugging).
+
 ## Docs
 
 - Design: `docs/design-plans/2026-04-17-pmx-provisioning.md`

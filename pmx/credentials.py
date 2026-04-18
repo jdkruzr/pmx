@@ -6,6 +6,8 @@ fresh shell the user is prompted (hidden input); a hint is printed
 showing how to export the password for future shells if desired.
 """
 
+# FCIS: imperative shell
+
 from __future__ import annotations
 
 import getpass

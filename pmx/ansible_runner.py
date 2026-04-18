@@ -1,9 +1,12 @@
 """Invoke ansible-playbook from pmx."""
 
+# FCIS: imperative shell
+
 from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -31,7 +34,7 @@ def run_playbook(playbook: str, extra_vars: dict[str, object], dry_run: bool = F
         json.dumps(extra_vars),
     ]
     if dry_run:
-        click.echo("+ " + " ".join(cmd), err=True)
+        click.echo("+ " + shlex.join(cmd), err=True)
         return 0
 
     result = subprocess.run(cmd, cwd=str(ANSIBLE_DIR), env=os.environ.copy(), check=False)
