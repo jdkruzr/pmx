@@ -25,7 +25,7 @@
 - name: Configure guest
   hosts: just_created
   gather_facts: true
-  become: true
+  become: "{{ guest_kind == 'vm' }}"
   tasks:
     - name: Run common bootstrap (upgrade + base packages)
       ansible.builtin.include_role:

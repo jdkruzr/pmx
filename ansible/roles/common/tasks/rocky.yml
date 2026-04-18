@@ -7,7 +7,11 @@
 
 - name: Install base packages
   ansible.builtin.dnf:
-    name: "{{ common_base_packages_rocky }}"
+    name: >-
+      {{ common_base_packages_rocky
+         | reject('equalto','qemu-guest-agent')
+         | list if guest_kind == 'lxc'
+         else common_base_packages_rocky }}
     state: present
 
 - name: Enable and start qemu-guest-agent
@@ -15,3 +19,4 @@
     name: qemu-guest-agent
     state: started
     enabled: true
+  when: guest_kind == "vm"

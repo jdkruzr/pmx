@@ -15,7 +15,11 @@
 
 - name: Install base packages
   ansible.builtin.apt:
-    name: "{{ common_base_packages_ubuntu }}"
+    name: >-
+      {{ common_base_packages_ubuntu
+         | reject('equalto','qemu-guest-agent')
+         | list if guest_kind == 'lxc'
+         else common_base_packages_ubuntu }}
     state: present
 
 - name: Enable and start qemu-guest-agent
@@ -23,3 +27,4 @@
     name: qemu-guest-agent
     state: started
     enabled: true
+  when: guest_kind == "vm"
