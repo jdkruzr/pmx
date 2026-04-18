@@ -1,0 +1,12 @@
+default_lxc_storage: cephfs
+default_bridge: vmbr0
+ssh_wait_timeout: 180
+
+# UID-map recipe for SSSD-compatible unprivileged LXCs. ~1 billion UID slots.
+# See: Proxmox forum thread on AD-joined unprivileged LXCs.
+subuid_entry: "root:100000:1000000000"
+lxc_idmap_block: |
+  lxc.idmap = u 0 100000 65536
+  lxc.idmap = g 0 100000 65536
+  lxc.idmap = u 500000000 500000000 99999999
+  lxc.idmap = g 500000000 500000000 99999999

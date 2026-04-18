@@ -1,0 +1,20 @@
+---
+# Ensure /etc/subuid and /etc/subgid contain the 1B-slot allocation for root.
+# We use a marker line so we can safely re-run and so manually-added entries
+# (e.g. for other LXC users) are not clobbered.
+
+- name: Ensure /etc/subuid has pmx allocation
+  ansible.builtin.blockinfile:
+    path: /etc/subuid
+    marker: "# {mark} pmx uid allocation"
+    block: "{{ subuid_entry }}"
+    create: true
+    mode: "0644"
+
+- name: Ensure /etc/subgid has pmx allocation
+  ansible.builtin.blockinfile:
+    path: /etc/subgid
+    marker: "# {mark} pmx gid allocation"
+    block: "{{ subuid_entry }}"
+    create: true
+    mode: "0644"

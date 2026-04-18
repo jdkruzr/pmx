@@ -1,0 +1,159 @@
+---
+- name: Allocate next free VMID
+  ansible.builtin.command: pvesh get /cluster/nextid
+  register: nextid_result
+  changed_when: false
+
+- name: Set new_vmid fact
+  ansible.builtin.set_fact:
+    new_vmid: "{{ nextid_result.stdout | trim | int }}"
+
+- name: Ensure host subuid/subgid are prepared
+  ansible.builtin.include_tasks: subuid.yml
+
+- name: Discover the latest LXC template for requested OS
+  ansible.builtin.shell: |
+    set -eo pipefail
+    pveam list {{ default_lxc_storage }} \
+      | awk '{print $1}' \
+      | grep -E '{{ lxc_template_pattern[guest_os] }}' \
+      | sort \
+      | tail -1
+  vars:
+    lxc_template_pattern:
+      ubuntu: 'ubuntu-(24|25)\.[0-9]+-standard'
+      rocky: 'rockylinux-9-default'
+  register: lxc_template_probe
+  changed_when: false
+
+- name: Fail if no matching template is cached
+  ansible.builtin.fail:
+    msg: >-
+      No LXC template matching {{ guest_os }} found on {{ default_lxc_storage }}.
+      Run `pmx seed` first.
+  when: lxc_template_probe.stdout | trim | length == 0
+
+- name: Set template_ref fact
+  ansible.builtin.set_fact:
+    template_ref: "{{ lxc_template_probe.stdout | trim }}"
+
+- name: Read operator SSH pubkey for container authorized_keys
+  ansible.builtin.set_fact:
+    ci_ssh_pubkey: "{{ lookup('file', lookup('env', 'HOME') + '/.ssh/id_ed25519.pub', errors='ignore') | default('', true) }}"
+
+- name: Fail if no SSH pubkey available on the Proxmox host
+  ansible.builtin.fail:
+    msg: "root's ~/.ssh/id_ed25519.pub not found on {{ target_node }}; populate it before running."
+  when: ci_ssh_pubkey | length == 0
+
+- name: Render authorized_keys to a temp file (pct consumes a file path)
+  ansible.builtin.copy:
+    content: "{{ ci_ssh_pubkey }}\n"
+    dest: "/tmp/pmx-{{ new_vmid }}.pub"
+    mode: "0600"
+
+- name: Compute effective static gateway (inferred as .1 of the subnet unless --static-gw supplied)
+  ansible.builtin.set_fact:
+    effective_static_gw: >-
+      {{ static_gw
+         if (static_gw | default('', true) | length > 0)
+         else (static_ip | ansible.utils.ipaddr('network') | ansible.utils.ipmath(1)) }}
+  when: static_ip is not none
+
+- name: Create unprivileged LXC with required features
+  ansible.builtin.command: >
+    pct create {{ new_vmid }}
+    {{ default_lxc_storage }}:vztmpl/{{ template_ref }}
+    --hostname {{ guest_name }}
+    --cores {{ cores }}
+    --memory {{ memory }}
+    --rootfs {{ default_lxc_storage }}:{{ disk }}
+    --net0 name=eth0,bridge={{ default_bridge }},firewall=0,ip={{ 'dhcp' if not static_ip else (static_ip + ',gw=' + effective_static_gw) }}
+    --unprivileged 1
+    --features nesting=1,keyctl=1
+    --ssh-public-keys /tmp/pmx-{{ new_vmid }}.pub
+    --onboot 0
+    {{ '--searchdomain ' + ad_domain if domain_join | bool else '' }}
+  changed_when: true
+
+- name: Clean up temp pubkey file
+  ansible.builtin.file:
+    path: "/tmp/pmx-{{ new_vmid }}.pub"
+    state: absent
+
+- name: Write extended idmap block into the container config (pre-start)
+  ansible.builtin.blockinfile:
+    path: "/etc/pve/lxc/{{ new_vmid }}.conf"
+    marker: "# {mark} pmx idmap"
+    block: "{{ lxc_idmap_block }}"
+    state: present
+
+- name: Start the container
+  ansible.builtin.command: "pct start {{ new_vmid }}"
+  changed_when: true
+
+- name: Wait for network inside the container
+  ansible.builtin.shell: |
+    set -e
+    for i in $(seq 1 30); do
+      out=$(pct exec {{ new_vmid }} -- ip -j addr show 2>/dev/null || true)
+      if [ -n "$out" ] && echo "$out" | python3 -c 'import json,sys; ifs=json.load(sys.stdin); [a for i in ifs if i["ifname"]!="lo" for a in i.get("addr_info",[]) if a["family"]=="inet" and not a["local"].startswith("127.")][0]'; then
+        exit 0
+      fi
+      sleep 3
+    done
+    exit 1
+  changed_when: false
+
+- name: Discover container IPv4
+  ansible.builtin.command: "pct exec {{ new_vmid }} -- ip -j addr show"
+  register: ip_raw
+  changed_when: false
+
+- name: Parse IPv4 from inside the container
+  ansible.builtin.set_fact:
+    guest_ip: >-
+      {{ (ip_raw.stdout | from_json
+          | rejectattr('ifname', 'eq', 'lo')
+          | map(attribute='addr_info') | flatten
+          | selectattr('family', 'eq', 'inet')
+          | rejectattr('local', 'search', '^127\\.')
+          | map(attribute='local') | first) | default(none) }}
+
+- name: Discover container MAC (for state log in Phase 8)
+  ansible.builtin.command: "pct config {{ new_vmid }}"
+  register: pct_config
+  changed_when: false
+
+- name: Parse MAC from pct config net0
+  ansible.builtin.set_fact:
+    guest_mac: "{{ pct_config.stdout | regex_search('net0:.*hwaddr=([0-9A-Fa-f:]+)', '\\1') | first | default('') }}"
+
+- name: Fail if IPv4 not discovered
+  ansible.builtin.fail:
+    msg: "Container {{ guest_name }} (VMID {{ new_vmid }}) did not acquire an IPv4 address within the timeout."
+  when: guest_ip is none or guest_ip == ""
+
+- name: Add container to in-memory inventory as `just_created`
+  ansible.builtin.add_host:
+    name: "{{ guest_name }}"
+    ansible_host: "{{ guest_ip }}"
+    ansible_user: root
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new"
+    groups: just_created
+    guest_vmid: "{{ new_vmid }}"
+    guest_kind: "{{ guest_kind }}"
+    guest_os: "{{ guest_os }}"
+    guest_mac: "{{ guest_mac }}"
+    domain_join: "{{ domain_join }}"
+    ad_domain: "{{ ad_domain }}"
+    ad_realm: "{{ ad_realm }}"
+    ad_join_user: "{{ ad_join_user }}"
+    cephfs_mounts: "{{ cephfs_mounts }}"
+    rbd_disk: "{{ rbd_disk }}"
+    extra_packages: "{{ extra_packages }}"
+    static_ip: "{{ static_ip }}"
+
+- name: Show discovered IP for operator
+  ansible.builtin.debug:
+    msg: "LXC {{ guest_name }} (vmid {{ new_vmid }}) reachable at {{ guest_ip }}."
