@@ -17,11 +17,10 @@
         name: create_vm
       when: guest_kind == "vm"
 
-    # Phase 4 adds:
-    # - name: Create LXC
-    #   ansible.builtin.include_role:
-    #     name: create_lxc
-    #   when: guest_kind == "lxc"
+    - name: Create LXC
+      ansible.builtin.include_role:
+        name: create_lxc
+      when: guest_kind == "lxc"
 
 - name: Configure guest
   hosts: just_created

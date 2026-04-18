@@ -91,11 +91,6 @@ def cmd_new(**kwargs: object) -> None:
         rc = run_playbook("provision.yml", extra_vars, dry_run=True)
         sys.exit(rc)
 
-    # LXC kind still falls through to stub until Phase 4 lands.
-    if kwargs["kind"] == "lxc":
-        click.echo("pmx new --kind lxc not yet implemented (Phase 4).", err=True)
-        sys.exit(NOT_IMPLEMENTED_EXIT)
-
     rc = run_playbook("provision.yml", extra_vars)
     sys.exit(rc)
 
