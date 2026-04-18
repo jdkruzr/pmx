@@ -125,8 +125,8 @@ def cmd_reconfigure(name: str) -> None:
 @click.argument("name")
 def cmd_verify(name: str) -> None:
     """Run smoke tests against a domain-joined guest."""
-    click.echo(f"pmx verify not yet implemented (name={name})", err=True)
-    sys.exit(NOT_IMPLEMENTED_EXIT)
+    from pmx import verify
+    sys.exit(verify.run(name))
 
 
 @main.command("seed")
