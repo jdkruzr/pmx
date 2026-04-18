@@ -1,0 +1,14 @@
+---
+ad_join_ubuntu_packages:
+  - realmd
+  - sssd
+  - sssd-ad
+  - sssd-tools
+  - adcli
+  - krb5-user
+  - samba-common-bin
+  - libnss-sss
+  - libpam-sss
+  - oddjob
+  - oddjob-mkhomedir
+  - packagekit

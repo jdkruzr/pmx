@@ -1,0 +1,55 @@
+---
+- name: Assert AD_JOIN_PASSWORD is set
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'AD_JOIN_PASSWORD') | length > 0
+    fail_msg: "$AD_JOIN_PASSWORD must be set. pmx CLI prompts for this automatically; if running ansible-playbook directly, export it first."
+
+- name: Wait for apt (any in-flight unattended-upgrades)
+  ansible.builtin.command: >
+    bash -c 'for i in $(seq 1 60); do if ! pgrep -x "unattended-upgr|apt|apt-get" >/dev/null; then exit 0; fi; sleep 2; done; exit 1'
+  changed_when: false
+
+- name: Install AD join packages
+  ansible.builtin.apt:
+    name: "{{ ad_join_ubuntu_packages }}"
+    state: present
+    update_cache: true
+
+- name: Check whether host is already realm-joined
+  ansible.builtin.command: realm list
+  register: realm_list
+  changed_when: false
+  failed_when: false
+
+- name: Run realm join (skipped if already joined)
+  ansible.builtin.shell: >
+    set -o pipefail;
+    printf '%s' "$AD_JOIN_PASSWORD"
+    | realm join --unattended --stdin-password -U {{ ad_join_user }} {{ ad_domain }}
+  args:
+    executable: /bin/bash
+  # Ansible does not inherit the controller's env on remote tasks, so we must
+  # explicitly pass $AD_JOIN_PASSWORD through. The lookup runs on the controller
+  # where the var is actually set; `no_log: true` below prevents the expanded
+  # value from appearing in any logs even in -vvv mode.
+  environment:
+    AD_JOIN_PASSWORD: "{{ lookup('env', 'AD_JOIN_PASSWORD') }}"
+  register: realm_join_result
+  when: ad_domain not in realm_list.stdout
+  # `no_log` hides the task output entirely but the registered variable is still
+  # accessible to failed_when (it evaluates on the controller with full access).
+  failed_when: realm_join_result.rc != 0 and 'Already joined' not in realm_join_result.stderr
+  no_log: true
+
+- name: Apply shared sssd.conf + sudoers drop-in
+  ansible.builtin.include_role:
+    name: ad_join_common
+    tasks_from: apply
+
+- name: Flush handlers so sssd restarts before PAM change
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable pam_mkhomedir
+  ansible.builtin.command: pam-auth-update --enable mkhomedir --force
+  changed_when: true
