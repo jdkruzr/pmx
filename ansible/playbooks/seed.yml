@@ -6,4 +6,5 @@
   roles:
     - role: seed_ubuntu_vm
     - role: seed_rocky_vm
+    - role: seed_ubuntu_lxc
     - role: seed_rocky_lxc

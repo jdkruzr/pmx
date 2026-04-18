@@ -19,25 +19,31 @@
   failed_when: false
 
 - name: Run realm join (skipped if already joined)
-  ansible.builtin.shell: >
-    set -o pipefail;
-    printf '%s' "$AD_JOIN_PASSWORD"
-    | realm join --unattended --stdin-password -U {{ ad_join_user }} {{ ad_domain }}
-  args:
-    executable: /bin/bash
-  # Ansible does not inherit the controller's env on remote tasks, so we must
-  # explicitly pass $AD_JOIN_PASSWORD through. The lookup runs on the controller
-  # where the var is actually set; `no_log: true` below prevents the expanded
-  # value from appearing in any logs even in -vvv mode.
-  environment:
-    AD_JOIN_PASSWORD: "{{ lookup('env', 'AD_JOIN_PASSWORD') }}"
-    LC_ALL: C
-  register: realm_join_result
+  block:
+    - name: Run realm join
+      ansible.builtin.shell: >
+        set -o pipefail;
+        printf '%s' "$AD_JOIN_PASSWORD"
+        | realm join --unattended --stdin-password -U {{ ad_join_user }} {{ ad_domain }}
+      args:
+        executable: /bin/bash
+      # Ansible does not inherit the controller's env on remote tasks, so we must
+      # explicitly pass $AD_JOIN_PASSWORD through. The lookup runs on the controller
+      # where the var is actually set; `no_log: true` below prevents the expanded
+      # value from appearing in any logs even in -vvv mode.
+      environment:
+        AD_JOIN_PASSWORD: "{{ lookup('env', 'AD_JOIN_PASSWORD') }}"
+        LC_ALL: C
+      register: realm_join_result
+      # `no_log` hides the task output entirely but the registered variable is still
+      # accessible to failed_when (it evaluates on the controller with full access).
+      failed_when: realm_join_result.rc != 0 and 'Already joined' not in realm_join_result.stderr
+      no_log: true
+  rescue:
+    - name: Surface vmid on realm join failure
+      ansible.builtin.fail:
+        msg: "realm join failed on guest vmid {{ guest_vmid }} ({{ guest_name }}). Guest is running; investigate via ssh and retry with 'pmx reconfigure {{ guest_name }}'."
   when: ad_domain not in realm_list.stdout
-  # `no_log` hides the task output entirely but the registered variable is still
-  # accessible to failed_when (it evaluates on the controller with full access).
-  failed_when: realm_join_result.rc != 0 and 'Already joined' not in realm_join_result.stderr
-  no_log: true
 
 - name: Apply shared sssd.conf + sudoers drop-in
   ansible.builtin.include_role:
@@ -47,6 +53,13 @@
 - name: Flush handlers so sssd restarts before PAM change
   ansible.builtin.meta: flush_handlers
 
-- name: Enable pam_mkhomedir
+- name: Check pam_mkhomedir status (Ubuntu)
+  ansible.builtin.command: grep -q 'pam_mkhomedir' /etc/pam.d/common-session
+  register: pam_mkhomedir_probe
+  changed_when: false
+  failed_when: false
+
+- name: Enable pam_mkhomedir (Ubuntu)
   ansible.builtin.command: pam-auth-update --enable mkhomedir --force
+  when: pam_mkhomedir_probe.rc != 0
   changed_when: true

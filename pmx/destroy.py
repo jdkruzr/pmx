@@ -43,7 +43,7 @@ def run(name: str, yes: bool) -> int:
         )
 
     if domain_joined:
-        ensure_ad_password()
+        ensure_ad_password(prompt=f"AD join password ({cfg.ad_join_user}@{cfg.ad_domain}): ")
 
     extra_vars = {
         "target_node": cfg.default_node,

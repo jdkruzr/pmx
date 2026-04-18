@@ -24,7 +24,7 @@ def run(name: str) -> int:
         return 1
 
     if state.domain_joined:
-        ensure_ad_password()
+        ensure_ad_password(prompt=f"AD join password ({cfg.ad_join_user}@{cfg.ad_domain}): ")
 
     extra_vars = {
         "target_node": cfg.default_node,
@@ -43,6 +43,9 @@ def run(name: str) -> int:
         "ad_domain": cfg.ad_domain,
         "ad_realm": cfg.ad_realm,
         "ad_join_user": cfg.ad_join_user,
+        "ceph_conf_path": cfg.ceph_conf_path,
+        "ceph_secret_path": cfg.ceph_secret_path,
+        "ceph_mons": cfg.ceph_mons,
         "default_storage": cfg.default_storage,
         "default_lxc_storage": cfg.default_lxc_storage,
         "default_bridge": cfg.default_bridge,

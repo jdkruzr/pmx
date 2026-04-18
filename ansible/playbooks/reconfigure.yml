@@ -14,6 +14,7 @@
         ansible_host: "{{ guest_ip }}"
         ansible_user: "{{ 'ansible' if guest_kind == 'vm' else 'root' }}"
         ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new"
+        ansible_become: "{{ 'true' if guest_kind == 'vm' else 'false' }}"
         groups: just_created
         guest_vmid: "{{ guest_vmid }}"
         guest_kind: "{{ guest_kind }}"

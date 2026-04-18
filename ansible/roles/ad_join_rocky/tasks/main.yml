@@ -17,24 +17,30 @@
   failed_when: false
 
 - name: Run realm join (skipped if already joined)
-  ansible.builtin.shell: >
-    set -o pipefail;
-    printf '%s' "$AD_JOIN_PASSWORD"
-    | realm join --unattended --stdin-password -U {{ ad_join_user }} {{ ad_domain }}
-  args:
-    executable: /bin/bash
-  # Ansible does not inherit the controller's env on remote tasks; the lookup
-  # runs on the controller where $AD_JOIN_PASSWORD is set. `no_log: true` below
-  # keeps the expanded value out of logs.
-  environment:
-    AD_JOIN_PASSWORD: "{{ lookup('env', 'AD_JOIN_PASSWORD') }}"
-    LC_ALL: C
-  register: realm_join_result
+  block:
+    - name: Run realm join
+      ansible.builtin.shell: >
+        set -o pipefail;
+        printf '%s' "$AD_JOIN_PASSWORD"
+        | realm join --unattended --stdin-password -U {{ ad_join_user }} {{ ad_domain }}
+      args:
+        executable: /bin/bash
+      # Ansible does not inherit the controller's env on remote tasks; the lookup
+      # runs on the controller where $AD_JOIN_PASSWORD is set. `no_log: true` below
+      # keeps the expanded value out of logs.
+      environment:
+        AD_JOIN_PASSWORD: "{{ lookup('env', 'AD_JOIN_PASSWORD') }}"
+        LC_ALL: C
+      register: realm_join_result
+      # `no_log` hides the task output; the registered variable remains accessible
+      # to failed_when (which runs on the controller).
+      failed_when: realm_join_result.rc != 0 and 'Already joined' not in realm_join_result.stderr
+      no_log: true
+  rescue:
+    - name: Surface vmid on realm join failure
+      ansible.builtin.fail:
+        msg: "realm join failed on guest vmid {{ guest_vmid }} ({{ guest_name }}). Guest is running; investigate via ssh and retry with 'pmx reconfigure {{ guest_name }}'."
   when: ad_domain not in realm_list.stdout
-  # `no_log` hides the task output; the registered variable remains accessible
-  # to failed_when (which runs on the controller).
-  failed_when: realm_join_result.rc != 0 and 'Already joined' not in realm_join_result.stderr
-  no_log: true
 
 - name: Apply shared sssd.conf + sudoers drop-in
   ansible.builtin.include_role:
@@ -44,8 +50,15 @@
 - name: Flush handlers so sssd restarts before PAM change
   ansible.builtin.meta: flush_handlers
 
-- name: Enable SSSD + mkhomedir via authselect
+- name: Check pam_oddjob_mkhomedir status (Rocky)
+  ansible.builtin.command: grep -q 'pam_oddjob_mkhomedir' /etc/pam.d/system-auth
+  register: pam_oddjob_probe
+  changed_when: false
+  failed_when: false
+
+- name: Enable SSSD + mkhomedir via authselect (Rocky)
   ansible.builtin.command: authselect select sssd with-mkhomedir --force
+  when: pam_oddjob_probe.rc != 0
   changed_when: true
 
 - name: Ensure oddjobd is enabled and running (needed by pam_oddjob_mkhomedir on Rocky)

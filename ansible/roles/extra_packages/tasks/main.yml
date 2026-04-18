@@ -1,8 +1,4 @@
 ---
-- name: Short-circuit if no extra packages requested
-  ansible.builtin.meta: end_host
-  when: extra_packages | default([]) | length == 0
-
 - name: Install extra packages (OS-conditional)
   block:
     - name: apt install extra packages (Ubuntu)
@@ -21,3 +17,4 @@
     - name: Surface vmid on package install failure
       ansible.builtin.fail:
         msg: "Package install failed on guest vmid {{ guest_vmid }} ({{ guest_name }}). See previous task output."
+  when: extra_packages | default([]) | length > 0

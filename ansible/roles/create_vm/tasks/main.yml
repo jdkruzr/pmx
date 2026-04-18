@@ -146,6 +146,7 @@
     rbd_disk: "{{ rbd_disk }}"
     extra_packages: "{{ extra_packages }}"
     static_ip: "{{ static_ip }}"
+    static_gw: "{{ static_gw | default('') }}"
 
 - name: Show discovered IP for operator
   ansible.builtin.debug:

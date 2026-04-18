@@ -3,7 +3,7 @@
   ansible.builtin.set_fact:
     pmx_state_record:
       hostname: "{{ guest_name }}"
-      vmid: "{{ guest_vmid | int }}"
+      vmid: {{ guest_vmid | int }}
       mac: "{{ guest_mac | default('') }}"
       ip: "{{ ansible_host }}"
       kind: "{{ guest_kind }}"

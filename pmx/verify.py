@@ -26,7 +26,7 @@ def run(name: str) -> int:
     checks = [
         ("sssd is active", "systemctl is-active sssd", "sssd not active (AC14.2)"),
         (
-            "id Administrator@broken.wrx",
+            f"id Administrator@{cfg.ad_domain}",
             f"id Administrator@{cfg.ad_domain}",
             "Cannot resolve Administrator@" + cfg.ad_domain + " (AC14.3)",
         ),

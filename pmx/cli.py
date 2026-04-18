@@ -78,7 +78,7 @@ def cmd_new(**kwargs: object) -> None:
     cfg = load()
 
     if not kwargs["no_domain"]:
-        ensure_ad_password()
+        ensure_ad_password(prompt=f"AD join password ({cfg.ad_join_user}@{cfg.ad_domain}): ")
 
     if kwargs["rbd_disk"] is not None and kwargs["kind"] == "lxc":
         click.echo("--rbd-disk is VM-only; --kind lxc cannot attach raw RBD disks.", err=True)
@@ -95,6 +95,9 @@ def cmd_new(**kwargs: object) -> None:
         "ad_realm": cfg.ad_realm,
         "ad_join_user": cfg.ad_join_user,
         "proxmox_api_host": cfg.proxmox_api_host,
+        "ceph_conf_path": cfg.ceph_conf_path,
+        "ceph_secret_path": cfg.ceph_secret_path,
+        "ceph_mons": cfg.ceph_mons,
         "state_log_path": str(Path(__file__).resolve().parent.parent / cfg.state_log_path),
     }
 

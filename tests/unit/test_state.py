@@ -43,3 +43,26 @@ def test_find_by_name_returns_most_recent(tmp_path: Path) -> None:
     ))
     assert find_by_name(log, "foo").vmid == 102
     assert find_by_name(log, "missing") is None
+
+
+def test_state_log_roundtrip_with_fixture() -> None:
+    """Verify state log can be read and types are preserved."""
+    fixture_path = Path(__file__).parent.parent / "fixtures" / "sample_guests.jsonl"
+    records = read_all(fixture_path)
+    assert len(records) == 1
+
+    rec = records[0]
+    assert isinstance(rec.vmid, int)
+    assert rec.vmid == 100
+    assert isinstance(rec.domain_joined, bool)
+    assert rec.domain_joined is True
+    assert isinstance(rec.cephfs_mounts, list)
+    assert rec.cephfs_mounts == []
+    assert isinstance(rec.extra_packages, list)
+    assert rec.extra_packages == []
+    assert isinstance(rec.rbd_disk, type(None))
+    assert isinstance(rec.created_at, str)
+    assert "2026-04-18" in rec.created_at
+    assert rec.hostname == "test-ubuntu-vm"
+    assert rec.kind == "vm"
+    assert rec.os == "ubuntu"

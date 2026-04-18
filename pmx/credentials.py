@@ -18,7 +18,7 @@ import click
 ENV_VAR = "AD_JOIN_PASSWORD"
 
 
-def ensure_ad_password() -> str:
+def ensure_ad_password(prompt: str = "AD join password: ") -> str:
     """Return the AD join password, prompting if not already cached.
 
     The returned value is also exported into os.environ[ENV_VAR] so
@@ -28,7 +28,7 @@ def ensure_ad_password() -> str:
     if cached:
         return cached
 
-    password = getpass.getpass(prompt="AD join password (jtd@broken.wrx): ")
+    password = getpass.getpass(prompt=prompt)
     if not password:
         click.echo("No password entered; aborting.", err=True)
         raise click.Abort()
