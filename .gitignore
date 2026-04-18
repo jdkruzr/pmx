@@ -9,3 +9,4 @@ build/
 .python-version
 uv.lock
 state/guests.jsonl
+ansible/.ansible/

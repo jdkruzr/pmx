@@ -1,0 +1,10 @@
+# Static inventory of Proxmox cluster nodes.
+# Guests are added dynamically at provision time via `ansible.builtin.add_host`.
+all:
+  children:
+    proxmox:
+      hosts:
+        pve01:
+          ansible_host: 192.168.9.12
+          ansible_user: root
+      # Add further cluster nodes here as pve02, pve03 with their ansible_host.

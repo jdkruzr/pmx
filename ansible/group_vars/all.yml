@@ -1,0 +1,17 @@
+# Defaults shared across all plays. Override per-run with -e extra vars.
+ad_domain: broken.wrx
+ad_realm: BROKEN.WRX
+ad_join_user: jtd
+
+default_storage: bwrx
+default_lxc_storage: cephfs
+default_bridge: vmbr0
+
+# Paths on the workstation (filled in by the CLI from ~/.config/pmx/config.yml)
+ceph_conf_path: /etc/ceph/ceph.conf
+ceph_secret_path: /etc/ceph/cephfs.secret
+ceph_mons:
+  - 192.168.9.11
+  - 192.168.9.12
+  - 192.168.9.13
+  - 192.168.9.14

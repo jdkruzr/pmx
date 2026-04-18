@@ -1,0 +1,18 @@
+---
+# Top-level provisioning playbook.
+# Invoked by pmx CLI with extra-vars: guest_name, guest_kind (vm|lxc),
+# guest_os (ubuntu|rocky), cores, memory, disk, cephfs_mounts (list),
+# rbd_disk (int|null), extra_packages (list), static_ip (str|null),
+# domain_join (bool). See ansible/group_vars/all.yml for defaults.
+
+- name: Create guest on Proxmox
+  hosts: proxmox
+  gather_facts: false
+  # Phase 3 (VM) and Phase 4 (LXC) populate this play with create_vm / create_lxc roles.
+  tasks: []
+
+- name: Configure guest
+  hosts: just_created
+  gather_facts: true
+  # Phase 5 wires in common + ad_join roles; Phase 6 wires in optional add-ons.
+  tasks: []

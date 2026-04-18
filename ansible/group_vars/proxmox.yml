@@ -1,0 +1,2 @@
+# Variables for the `proxmox` group (the hosts running pct/qm).
+ansible_python_interpreter: /usr/bin/python3
