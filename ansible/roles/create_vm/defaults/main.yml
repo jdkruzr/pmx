@@ -1,4 +1,5 @@
 # Overridden by group_vars/all.yml and CLI extra-vars.
 default_storage: bwrx
 default_bridge: vmbr0
+static_gw: ""
 ssh_wait_timeout: 180

@@ -39,7 +39,7 @@
 
 - name: Read operator SSH pubkey for container authorized_keys
   ansible.builtin.set_fact:
-    ci_ssh_pubkey: "{{ lookup('file', lookup('env', 'HOME') + '/.ssh/id_ed25519.pub', errors='ignore') | default('', true) }}"
+    ci_ssh_pubkey: "{{ lookup('file', '/root/.ssh/id_ed25519.pub', errors='ignore') | default('', true) }}"
 
 - name: Fail if no SSH pubkey available on the Proxmox host
   ansible.builtin.fail:
@@ -63,7 +63,7 @@
 - name: Create unprivileged LXC with required features
   ansible.builtin.command: >
     pct create {{ new_vmid }}
-    {{ default_lxc_storage }}:vztmpl/{{ template_ref }}
+    {{ template_ref }}
     --hostname {{ guest_name }}
     --cores {{ cores }}
     --memory {{ memory }}
@@ -92,28 +92,24 @@
   ansible.builtin.command: "pct start {{ new_vmid }}"
   changed_when: true
 
-- name: Wait for network inside the container
-  ansible.builtin.shell: |
-    set -e
-    for i in $(seq 1 30); do
-      out=$(pct exec {{ new_vmid }} -- ip -j addr show 2>/dev/null || true)
-      if [ -n "$out" ] && echo "$out" | python3 -c 'import json,sys; ifs=json.load(sys.stdin); [a for i in ifs if i["ifname"]!="lo" for a in i.get("addr_info",[]) if a["family"]=="inet" and not a["local"].startswith("127.")][0]'; then
-        exit 0
-      fi
-      sleep 3
-    done
-    exit 1
-  changed_when: false
-
-- name: Discover container IPv4
+- name: Wait for LXC network IPv4
   ansible.builtin.command: "pct exec {{ new_vmid }} -- ip -j addr show"
-  register: ip_raw
+  register: ip_probe
+  retries: 30
+  delay: 3
   changed_when: false
+  until: >-
+    (ip_probe.stdout | from_json
+     | rejectattr('ifname', 'eq', 'lo')
+     | map(attribute='addr_info') | flatten
+     | selectattr('family', 'eq', 'inet')
+     | rejectattr('local', 'search', '^127\\.')
+     | list | length) > 0
 
 - name: Parse IPv4 from inside the container
   ansible.builtin.set_fact:
     guest_ip: >-
-      {{ (ip_raw.stdout | from_json
+      {{ (ip_probe.stdout | from_json
           | rejectattr('ifname', 'eq', 'lo')
           | map(attribute='addr_info') | flatten
           | selectattr('family', 'eq', 'inet')
@@ -127,7 +123,7 @@
 
 - name: Parse MAC from pct config net0
   ansible.builtin.set_fact:
-    guest_mac: "{{ pct_config.stdout | regex_search('net0:.*hwaddr=([0-9A-Fa-f:]+)', '\\1') | first | default('') }}"
+    guest_mac: "{{ (pct_config.stdout | regex_findall('hwaddr=([0-9A-Fa-f:]+)') | first) | default('') }}"
 
 - name: Fail if IPv4 not discovered
   ansible.builtin.fail:
@@ -140,6 +136,7 @@
     ansible_host: "{{ guest_ip }}"
     ansible_user: root
     ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new"
+    ansible_become: false
     groups: just_created
     guest_vmid: "{{ new_vmid }}"
     guest_kind: "{{ guest_kind }}"

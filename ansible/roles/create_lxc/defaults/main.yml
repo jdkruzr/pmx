@@ -1,5 +1,6 @@
 default_lxc_storage: cephfs
 default_bridge: vmbr0
+static_gw: ""
 ssh_wait_timeout: 180
 
 # UID-map recipe for SSSD-compatible unprivileged LXCs. ~1 billion UID slots.
