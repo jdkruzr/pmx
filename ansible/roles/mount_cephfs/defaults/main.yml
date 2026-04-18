@@ -1,0 +1,10 @@
+---
+# Default values for mount_cephfs role.
+ceph_conf_path: /etc/ceph/ceph.conf
+ceph_secret_path: /etc/ceph/cephfs.secret
+ceph_mons:
+  - 192.168.9.11
+  - 192.168.9.12
+  - 192.168.9.13
+  - 192.168.9.14
+cephfs_mount_opts: "name=admin,secretfile=/etc/ceph/cephfs.secret,noatime,_netdev"

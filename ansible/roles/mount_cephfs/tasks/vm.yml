@@ -1,0 +1,77 @@
+---
+# VM-native CephFS mount path.
+# Installs ceph-common, copies config and secret, creates fstab entries, mounts.
+
+- name: Fail early if workstation-side cephfs.secret is missing
+  ansible.builtin.stat:
+    path: "{{ ceph_secret_path }}"
+  delegate_to: localhost
+  become: false
+  register: workstation_secret
+
+- name: Fail loudly if missing
+  ansible.builtin.fail:
+    msg: >-
+      pmx requires {{ ceph_secret_path }} on the workstation to copy into VMs.
+      Ensure the workstation is already a Ceph client before requesting --cephfs.
+  when: not workstation_secret.stat.exists
+
+- name: Install ceph-common (Ubuntu)
+  ansible.builtin.apt:
+    name: ceph-common
+    state: present
+  when: guest_os == 'ubuntu'
+
+- name: Enable Ceph repo on Rocky
+  ansible.builtin.yum_repository:
+    name: ceph
+    description: Ceph Reef
+    baseurl: https://download.ceph.com/rpm-reef/el9/$basearch
+    gpgcheck: true
+    gpgkey: https://download.ceph.com/keys/release.asc
+    enabled: true
+  when: guest_os == 'rocky'
+
+- name: Install ceph-common (Rocky)
+  ansible.builtin.dnf:
+    name: ceph-common
+    state: present
+  when: guest_os == 'rocky'
+
+- name: Create /etc/ceph directory
+  ansible.builtin.file:
+    path: /etc/ceph
+    state: directory
+    mode: "0755"
+
+- name: Copy ceph.conf from workstation
+  ansible.builtin.copy:
+    src: "{{ ceph_conf_path }}"
+    dest: /etc/ceph/ceph.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Copy cephfs.secret from workstation (tightened to 0600)
+  ansible.builtin.copy:
+    src: "{{ ceph_secret_path }}"
+    dest: /etc/ceph/cephfs.secret
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Ensure mount directories exist
+  ansible.builtin.file:
+    path: "{{ item.dest }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ cephfs_specs }}"
+
+- name: Add fstab entries and mount
+  ansible.posix.mount:
+    path: "{{ item.dest }}"
+    src: "{{ ceph_mons | join(',') }}:6789:{{ item.subpath }}"
+    fstype: ceph
+    opts: "{{ cephfs_mount_opts }}"
+    state: mounted
+  loop: "{{ cephfs_specs }}"

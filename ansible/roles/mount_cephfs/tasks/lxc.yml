@@ -1,0 +1,52 @@
+---
+# LXC CephFS mount path (delegated to host).
+# Host-side mount on Proxmox node, then patch /etc/pve/lxc/<vmid>.conf with mp<N>: lines.
+
+- name: Delegate host-side work to the Proxmox node
+  block:
+
+    - name: Ensure mount directories exist on host
+      ansible.builtin.file:
+        path: "/mnt/pmx-passthrough{{ item.subpath }}"
+        state: directory
+        mode: "0755"
+      loop: "{{ cephfs_specs }}"
+
+    - name: Mount CephFS subpaths on the host (if not already)
+      ansible.posix.mount:
+        path: "/mnt/pmx-passthrough{{ item.subpath }}"
+        src: "{{ ceph_mons | join(',') }}:6789:{{ item.subpath }}"
+        fstype: ceph
+        opts: "{{ cephfs_mount_opts }}"
+        state: mounted
+      loop: "{{ cephfs_specs }}"
+
+    - name: Find next free mp index for this container
+      ansible.builtin.shell: |
+        set -e
+        for i in $(seq 0 15); do
+          if ! grep -q "^mp${i}:" /etc/pve/lxc/{{ guest_vmid }}.conf 2>/dev/null; then
+            echo $i; exit 0
+          fi
+        done
+        echo "no free mp slot" >&2; exit 1
+      register: mp_index
+      changed_when: false
+
+    - name: Append mp line to container config
+      ansible.builtin.lineinfile:
+        path: "/etc/pve/lxc/{{ guest_vmid }}.conf"
+        line: "mp{{ (mp_index.stdout | int) + ansible_loop.index0 }}: /mnt/pmx-passthrough{{ item.subpath }},mp={{ item.dest }},ro=0"
+        insertafter: EOF
+      loop: "{{ cephfs_specs }}"
+      loop_control:
+        extended: true
+
+    - name: Restart container so mp lines take effect
+      ansible.builtin.shell: |
+        pct stop {{ guest_vmid }}
+        pct start {{ guest_vmid }}
+      changed_when: true
+
+  delegate_to: "{{ target_node }}"
+  become: false

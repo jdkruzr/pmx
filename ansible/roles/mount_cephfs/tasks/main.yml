@@ -1,0 +1,14 @@
+---
+# Main task dispatcher for mount_cephfs role.
+# Branches on guest_kind (vm vs lxc) after parsing specs.
+
+- name: Short-circuit if no CephFS mounts requested
+  ansible.builtin.meta: end_host
+  when: cephfs_mounts | default([]) | length == 0
+
+- name: Parse cephfs_mounts into structured list
+  ansible.builtin.set_fact:
+    cephfs_specs: "{{ cephfs_mounts | map('pmx_parse_cephfs') | list }}"
+
+- name: Dispatch to VM or LXC flow
+  ansible.builtin.include_tasks: "{{ 'vm.yml' if guest_kind == 'vm' else 'lxc.yml' }}"
