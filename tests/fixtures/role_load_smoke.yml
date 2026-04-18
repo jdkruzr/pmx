@@ -1,0 +1,20 @@
+---
+# Minimal playbook that forces Ansible to load every role's task files.
+# Used by CI to catch YAML/Jinja regressions that play-level syntax-check misses.
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - role: post_create_hook
+      vars:
+        state_log_path: /tmp/noop.jsonl
+        guest_name: smoke
+        guest_vmid: 101
+        guest_mac: "aa:bb:cc:dd:ee:ff"
+        ansible_host: 127.0.0.1
+        guest_kind: vm
+        guest_os: ubuntu
+        domain_join: false
+        ansible_date_time:
+          iso8601: "2026-01-01T00:00:00Z"
+      tags: never

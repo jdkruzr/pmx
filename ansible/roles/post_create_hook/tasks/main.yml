@@ -1,20 +1,21 @@
 ---
 - name: Build post-hook payload
   ansible.builtin.set_fact:
-    pmx_state_record:
-      hostname: "{{ guest_name }}"
-      vmid: {{ guest_vmid | int }}
-      mac: "{{ guest_mac | default('') }}"
-      ip: "{{ ansible_host }}"
-      kind: "{{ guest_kind }}"
-      os: "{{ guest_os }}"
-      domain_joined: "{{ domain_join | bool }}"
-      cephfs_mounts: "{{ cephfs_mounts | default([]) }}"
-      rbd_disk: "{{ rbd_disk | default(None) }}"
-      extra_packages: "{{ extra_packages | default([]) }}"
-      static_ip: "{{ static_ip | default(None) }}"
-      static_gw: "{{ static_gw | default(None) }}"
-      created_at: "{{ ansible_date_time.iso8601 }}"
+    pmx_state_record: "{{ {
+      'hostname': guest_name,
+      'vmid': guest_vmid | int,
+      'mac': guest_mac | default(''),
+      'ip': ansible_host,
+      'kind': guest_kind,
+      'os': guest_os,
+      'domain_joined': domain_join | bool,
+      'cephfs_mounts': cephfs_mounts | default([]),
+      'rbd_disk': rbd_disk | default(None),
+      'extra_packages': extra_packages | default([]),
+      'static_ip': static_ip | default(None),
+      'static_gw': static_gw | default(None),
+      'created_at': ansible_date_time.iso8601,
+    } }}"
 
 - name: Ensure state/ directory exists on workstation
   ansible.builtin.file:
