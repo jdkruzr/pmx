@@ -3,23 +3,21 @@
   ansible.builtin.meta: end_host
   when: extra_packages | default([]) | length == 0
 
-- name: apt install extra packages (Ubuntu)
-  ansible.builtin.apt:
-    name: "{{ extra_packages }}"
-    state: present
-    update_cache: true
-  when: guest_os == 'ubuntu'
-  register: apt_result
+- name: Install extra packages (OS-conditional)
+  block:
+    - name: apt install extra packages (Ubuntu)
+      ansible.builtin.apt:
+        name: "{{ extra_packages }}"
+        state: present
+        update_cache: true
+      when: guest_os == 'ubuntu'
 
-- name: dnf install extra packages (Rocky)
-  ansible.builtin.dnf:
-    name: "{{ extra_packages }}"
-    state: present
-  when: guest_os == 'rocky'
-  register: dnf_result
-
-- name: Surface vmid on package install failure
-  ansible.builtin.fail:
-    msg: "Package install failed on guest vmid {{ guest_vmid }} ({{ guest_name }}). See previous task output."
-  when:
-    - (apt_result is failed) or (dnf_result is failed)
+    - name: dnf install extra packages (Rocky)
+      ansible.builtin.dnf:
+        name: "{{ extra_packages }}"
+        state: present
+      when: guest_os == 'rocky'
+  rescue:
+    - name: Surface vmid on package install failure
+      ansible.builtin.fail:
+        msg: "Package install failed on guest vmid {{ guest_vmid }} ({{ guest_name }}). See previous task output."

@@ -51,6 +51,7 @@
         name: mount_cephfs
       when: cephfs_mounts | default([]) | length > 0
 
+    # The `extra_packages` extra-var (list) and the role of the same name share a name intentionally.
     - name: Install extra packages
       ansible.builtin.include_role:
         name: extra_packages

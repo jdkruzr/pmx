@@ -51,3 +51,8 @@ class TestPmxParseCephfs:
         """If multiple colons, split on the first one only."""
         result = pmx_parse_cephfs("sub:path:/mnt/dir:with:colons")
         assert result == {"subpath": "/sub", "dest": "path:/mnt/dir:with:colons"}
+
+    def test_reject_trailing_colon(self):
+        """Raises ValueError if destination is empty (trailing colon)."""
+        with pytest.raises(ValueError, match="destination cannot be empty"):
+            pmx_parse_cephfs("foo:")

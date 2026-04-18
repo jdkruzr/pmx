@@ -12,6 +12,8 @@ def pmx_parse_cephfs(spec: str) -> dict[str, str]:
     if ":" not in spec:
         raise ValueError(f"cephfs spec must be '<subpath>:<guest-path>', got: {spec!r}")
     subpath, dest = spec.split(":", 1)
+    if not dest:
+        raise ValueError(f"cephfs spec destination cannot be empty, got: {spec!r}")
     if not subpath.startswith("/"):
         subpath = "/" + subpath
     return {"subpath": subpath, "dest": dest}
