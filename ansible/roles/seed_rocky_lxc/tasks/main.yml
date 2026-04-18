@@ -30,5 +30,8 @@
 
 - name: Download Rocky 9 LXC template
   ansible.builtin.command: "pveam download {{ default_lxc_storage }} {{ rocky_lxc_template }}"
-  when: rocky_lxc_template not in pveam_list.stdout
+  when: >-
+    pveam_list.stdout_lines
+    | select('search', rocky_lxc_template | regex_escape)
+    | list | length == 0
   changed_when: true

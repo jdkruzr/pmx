@@ -1,6 +1,7 @@
 ---
-- name: Check if Rocky template already exists
-  ansible.builtin.command: qm status {{ rocky_template_vmid }}
+- name: Check if Rocky template exists and is fully built
+  ansible.builtin.shell: |
+    qm config {{ rocky_template_vmid }} 2>/dev/null | grep -q '^template: 1'
   register: rocky_template_probe
   changed_when: false
   failed_when: false

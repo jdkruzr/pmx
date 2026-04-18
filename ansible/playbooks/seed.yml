@@ -3,16 +3,6 @@
   hosts: "{{ target_node }}"
   gather_facts: false
   become: false
-  vars:
-    ubuntu_template_vmid: 9000
-    ubuntu_template_name: template-ubuntu-2404
-    ubuntu_image_url: https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
-    ubuntu_image_checksum_url: https://cloud-images.ubuntu.com/noble/current/SHA256SUMS
-    rocky_template_vmid: 9001
-    rocky_template_name: template-rocky-9
-    rocky_image_url: https://dl.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-Base.latest.x86_64.qcow2
-    rocky_lxc_template_name_pattern: "rockylinux-9-default_*_amd64.tar.xz"
-    image_cache_dir: /var/lib/vz/template/iso
   roles:
     - role: seed_ubuntu_vm
     - role: seed_rocky_vm

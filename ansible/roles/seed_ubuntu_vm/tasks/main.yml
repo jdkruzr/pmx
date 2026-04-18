@@ -1,6 +1,7 @@
 ---
-- name: Check if Ubuntu template already exists
-  ansible.builtin.command: qm status {{ ubuntu_template_vmid }}
+- name: Check if Ubuntu template exists and is fully built
+  ansible.builtin.shell: |
+    qm config {{ ubuntu_template_vmid }} 2>/dev/null | grep -q '^template: 1'
   register: ubuntu_template_probe
   changed_when: false
   failed_when: false
