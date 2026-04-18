@@ -28,6 +28,7 @@
   # keeps the expanded value out of logs.
   environment:
     AD_JOIN_PASSWORD: "{{ lookup('env', 'AD_JOIN_PASSWORD') }}"
+    LC_ALL: C
   register: realm_join_result
   when: ad_domain not in realm_list.stdout
   # `no_log` hides the task output; the registered variable remains accessible
