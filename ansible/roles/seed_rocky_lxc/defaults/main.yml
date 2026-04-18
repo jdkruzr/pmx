@@ -1,0 +1,2 @@
+default_lxc_storage: cephfs
+rocky_lxc_template_pattern: "^rockylinux-9-default_.*_amd64\\.tar\\.xz$"

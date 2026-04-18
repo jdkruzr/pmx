@@ -1,0 +1,53 @@
+---
+- name: Check if Rocky template already exists
+  ansible.builtin.command: qm status {{ rocky_template_vmid }}
+  register: rocky_template_probe
+  changed_when: false
+  failed_when: false
+
+- name: Skip rest of role when template already exists
+  ansible.builtin.meta: end_host
+  when: rocky_template_probe.rc == 0
+
+- name: Ensure image cache dir exists
+  ansible.builtin.file:
+    path: "{{ image_cache_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Download Rocky cloud image
+  ansible.builtin.get_url:
+    url: "{{ rocky_image_url }}"
+    dest: "{{ image_cache_dir }}/rocky-9-genericcloud.qcow2"
+    mode: "0644"
+    timeout: 600
+
+- name: Create VM shell for template
+  ansible.builtin.command: >
+    qm create {{ rocky_template_vmid }}
+    --name {{ rocky_template_name }}
+    --memory 2048 --cores 2
+    --net0 virtio,bridge={{ default_bridge }}
+    --ostype l26
+  changed_when: true
+
+- name: Import disk into storage
+  ansible.builtin.command: >
+    qm importdisk {{ rocky_template_vmid }}
+    {{ image_cache_dir }}/rocky-9-genericcloud.qcow2
+    {{ default_storage }}
+  changed_when: true
+
+- name: Attach disk, cloud-init drive, serial console
+  ansible.builtin.command: "{{ item }}"
+  loop:
+    - "qm set {{ rocky_template_vmid }} --scsihw virtio-scsi-pci --scsi0 {{ default_storage }}:vm-{{ rocky_template_vmid }}-disk-0"
+    - "qm set {{ rocky_template_vmid }} --ide2 {{ default_storage }}:cloudinit"
+    - "qm set {{ rocky_template_vmid }} --boot c --bootdisk scsi0"
+    - "qm set {{ rocky_template_vmid }} --serial0 socket --vga serial0"
+    - "qm set {{ rocky_template_vmid }} --agent enabled=1"
+  changed_when: true
+
+- name: Convert to template
+  ansible.builtin.command: qm template {{ rocky_template_vmid }}
+  changed_when: true

@@ -1,0 +1,34 @@
+---
+- name: Refresh pveam catalog
+  ansible.builtin.command: pveam update
+  changed_when: false
+
+- name: List available Rocky 9 LXC templates
+  ansible.builtin.command: pveam available --section system
+  register: pveam_available
+  changed_when: false
+
+- name: Pick latest Rocky 9 LXC template filename
+  ansible.builtin.set_fact:
+    rocky_lxc_template: >-
+      {{ (pveam_available.stdout_lines
+          | select('match', rocky_lxc_template_pattern)
+          | map('regex_replace', '^.*\\s', '')
+          | list
+          | sort
+          | last) | default(None) }}
+
+- name: Fail if no Rocky 9 LXC template is listed
+  ansible.builtin.fail:
+    msg: "No Rocky 9 LXC template found in `pveam available --section system`."
+  when: rocky_lxc_template is none or rocky_lxc_template == ""
+
+- name: Check whether template is already downloaded
+  ansible.builtin.command: "pveam list {{ default_lxc_storage }}"
+  register: pveam_list
+  changed_when: false
+
+- name: Download Rocky 9 LXC template
+  ansible.builtin.command: "pveam download {{ default_lxc_storage }} {{ rocky_lxc_template }}"
+  when: rocky_lxc_template not in pveam_list.stdout
+  changed_when: true

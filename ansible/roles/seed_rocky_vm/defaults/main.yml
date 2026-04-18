@@ -1,0 +1,6 @@
+rocky_template_vmid: 9001
+rocky_template_name: template-rocky-9
+rocky_image_url: https://dl.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-Base.latest.x86_64.qcow2
+image_cache_dir: /var/lib/vz/template/iso
+default_storage: bwrx
+default_bridge: vmbr0

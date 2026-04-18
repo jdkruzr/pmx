@@ -1,0 +1,7 @@
+---
+ubuntu_template_vmid: 9000
+ubuntu_template_name: template-ubuntu-2404
+ubuntu_image_url: https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
+image_cache_dir: /var/lib/vz/template/iso
+default_storage: bwrx
+default_bridge: vmbr0
