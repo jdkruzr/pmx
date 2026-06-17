@@ -1,3 +1,6 @@
 # Managed by pmx — do not edit by hand.
-# Members of the AD Domain Admins group (normalised to domain_admins via SSSD override_space).
-%domain_admins ALL=(ALL:ALL) ALL
+# Members of the AD Domain Admins group.
+# Note: sudo queries NSS for group names and does NOT honor sssd's
+# override_space. The literal AD group name is "domain admins" (with space),
+# which in sudoers must be backslash-escaped.
+%domain\ admins ALL=(ALL:ALL) ALL

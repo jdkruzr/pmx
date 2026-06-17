@@ -24,7 +24,7 @@
       ansible.builtin.shell: >
         set -o pipefail;
         printf '%s' "$AD_JOIN_PASSWORD"
-        | realm join --unattended --stdin-password -U {{ ad_join_user }} {{ ad_domain }}
+        | realm join --unattended -U {{ ad_join_user }} {{ ad_domain }}
       args:
         executable: /bin/bash
       # Ansible does not inherit the controller's env on remote tasks, so we must

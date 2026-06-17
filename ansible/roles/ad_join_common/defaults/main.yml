@@ -1,5 +1,10 @@
 ---
 sssd_simple_allow_groups:
+  # The literal group name from AD has a space ("domain admins"). With
+  # override_space = _ in sssd.conf, the *displayed* name uses underscore,
+  # but simple_allow_groups matches against the underlying AD name. Include
+  # both forms so the allow-list works regardless of how SSSD reads it.
+  - "domain admins"
   - domain_admins
 sssd_default_shell: /bin/bash
 sssd_fallback_homedir: /home/%u

@@ -8,5 +8,6 @@
   when: cephfs_mounts | default([]) | length > 0
 
 - name: Dispatch to VM or LXC flow
-  ansible.builtin.include_tasks: "{{ 'vm.yml' if guest_kind == 'vm' else 'lxc.yml' }}"
+  ansible.builtin.include_tasks:
+    file: "{{ 'vm.yml' if guest_kind == 'vm' else 'lxc.yml' }}"
   when: cephfs_mounts | default([]) | length > 0

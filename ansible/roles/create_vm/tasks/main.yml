@@ -8,13 +8,13 @@
   ansible.builtin.set_fact:
     new_vmid: "{{ nextid_result.stdout | trim | int }}"
 
-- name: Build cloud-init SSH key list (operator's pubkey, read on the Proxmox node)
+- name: Build cloud-init SSH key list (operator's pubkey, read on the workstation)
   ansible.builtin.set_fact:
-    cloudinit_sshkeys: "{{ lookup('file', '/root/.ssh/id_ed25519.pub', errors='ignore') | default('', true) }}"
+    cloudinit_sshkeys: "{{ lookup('file', ssh_public_key_path | default('~/.ssh/id_ed25519.pub'), errors='ignore') | default('', true) }}"
 
 - name: Sanity-check we have at least one SSH pubkey
   ansible.builtin.fail:
-    msg: "Could not read /root/.ssh/id_ed25519.pub on the Proxmox node. Populate it or adjust the lookup."
+    msg: "Could not read {{ ssh_public_key_path | default('~/.ssh/id_ed25519.pub') }} on the workstation. Populate it or set ssh_public_key_path."
   when: cloudinit_sshkeys | length == 0
 
 - name: Render pubkey to a temp file (qm set --sshkeys takes a file path, not literal content)
@@ -86,18 +86,35 @@
   ansible.builtin.command: "qm start {{ new_vmid }}"
   changed_when: true
 
-- name: Wait for QEMU guest agent to come up
-  ansible.builtin.command: "qm guest ping {{ new_vmid }}"
+# When --static-ip is provided we already know the IP. Skip the QEMU guest
+# agent entirely (the Ubuntu cloud image may not ship qemu-guest-agent), and
+# read the MAC from the cluster's persisted net0 config instead.
+- name: Read net0 from cluster config (static-ip path)
+  ansible.builtin.command: "qm config {{ new_vmid }}"
+  register: qm_config_static
+  changed_when: false
+  when: static_ip is not none
+
+- name: Derive guest_ip and guest_mac from static config
+  ansible.builtin.set_fact:
+    guest_ip: "{{ static_ip.split('/')[0] }}"
+    guest_mac: "{{ qm_config_static.stdout | regex_findall('^net0:[^,]*virtio=([0-9A-Fa-f:]+)', multiline=True) | first | default('') }}"
+  when: static_ip is not none
+
+- name: Wait for QEMU guest agent to come up (DHCP path)
+  ansible.builtin.command: "qm guest cmd {{ new_vmid }} ping"
   register: qga_probe
   retries: 30
   delay: 5
   until: qga_probe.rc == 0
   changed_when: false
+  when: static_ip is none
 
 - name: Discover DHCP-assigned IPv4
   ansible.builtin.command: "qm guest cmd {{ new_vmid }} network-get-interfaces"
   register: interfaces_raw
   changed_when: false
+  when: static_ip is none
 
 - name: Parse first non-loopback IPv4 from guest agent output
   ansible.builtin.set_fact:
@@ -108,22 +125,31 @@
           | selectattr('ip-address-type', 'eq', 'ipv4')
           | rejectattr('ip-address', 'search', '^127\\.')
           | map(attribute='ip-address') | first) | default(none) }}
+  when: static_ip is none
 
 - name: Fail if no IPv4 was discovered
   ansible.builtin.fail:
     msg: "Guest {{ guest_name }} (VMID {{ new_vmid }}) did not acquire an IPv4 address via guest agent."
-  when: guest_ip is none or guest_ip == ""
+  when: static_ip is none and (guest_ip is none or guest_ip == "")
 
-- name: Find MAC address matching guest_ip
+- name: Find MAC address matching guest_ip (DHCP path)
   ansible.builtin.set_fact:
     guest_mac: "{{ lookup('ansible.builtin.vars', 'guest_mac_result', default='') }}"
   vars:
     guest_mac_result: "{% set ns = namespace(mac='') %}{% for iface in (interfaces_raw.stdout | from_json) %}{% if iface['name'] != 'lo' and iface.get('ip-addresses') %}{% for addr in iface['ip-addresses'] %}{% if addr.get('ip-address') == guest_ip and addr.get('ip-address-type') == 'ipv4' %}{% set ns.mac = iface['hardware-address'] %}{% endif %}{% endfor %}{% endif %}{% endfor %}{{ ns.mac }}"
+  when: static_ip is none
 
 - name: Fail if MAC could not be determined
   ansible.builtin.fail:
     msg: "Could not determine MAC address for interface with IP {{ guest_ip }}"
   when: guest_mac | length == 0
+
+- name: Wait for SSH to be reachable on the guest
+  ansible.builtin.wait_for:
+    host: "{{ guest_ip }}"
+    port: 22
+    timeout: 300
+    delay: 5
 
 - name: Add new guest to in-memory inventory as `just_created`
   ansible.builtin.add_host:

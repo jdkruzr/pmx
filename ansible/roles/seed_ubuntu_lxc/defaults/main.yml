@@ -1,2 +1,2 @@
 default_lxc_storage: cephfs
-ubuntu_lxc_template_pattern: "^ubuntu-24\\.[0-9]+-standard.*amd64\\.tar\\.zst$"
+ubuntu_lxc_template_pattern: "^ubuntu-[0-9]+\\.[0-9]+-standard.*amd64\\.tar\\.zst$"

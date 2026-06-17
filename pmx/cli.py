@@ -12,12 +12,27 @@ Subcommands:
 
 from __future__ import annotations
 
+import ipaddress
 import sys
 from pathlib import Path
 
 import click
 
 NOT_IMPLEMENTED_EXIT = 1
+
+
+def _validate_cidr(ctx: click.Context, param: click.Parameter, value: str | None) -> str | None:
+    if value is None:
+        return None
+    if "/" not in value:
+        raise click.BadParameter(
+            f"{value!r} must include a CIDR prefix (e.g. 192.168.9.95/24)."
+        )
+    try:
+        ipaddress.ip_interface(value)
+    except ValueError as exc:
+        raise click.BadParameter(f"{value!r} is not a valid IP/CIDR: {exc}") from exc
+    return value
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -58,6 +73,7 @@ def main() -> None:
 @click.option(
     "--static-ip",
     default=None,
+    callback=_validate_cidr,
     help="Static IP/CIDR (e.g. 192.168.9.80/24). Default: DHCP.",
 )
 @click.option(

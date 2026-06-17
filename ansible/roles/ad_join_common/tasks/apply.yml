@@ -16,3 +16,25 @@
     group: root
     mode: "0440"
     validate: /usr/sbin/visudo -cf %s
+
+- name: Enable GSSAPI + password sshd auth for AD users
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/00-pmx-ad.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by pmx (ad_join_common role).
+      # Filename must sort before cloud-init's drop-in (60-cloudimg-settings.conf)
+      # because sshd_config first-occurrence wins for booleans like
+      # PasswordAuthentication.
+      GSSAPIAuthentication yes
+      GSSAPICleanupCredentials yes
+      PasswordAuthentication yes
+  notify: reload ssh
+
+- name: Remove obsolete 60-pmx-ad.conf if present
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d/60-pmx-ad.conf
+    state: absent
+  notify: reload ssh

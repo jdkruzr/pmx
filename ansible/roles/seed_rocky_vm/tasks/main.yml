@@ -7,7 +7,7 @@
   failed_when: false
 
 - name: Skip rest of role when template already exists
-  ansible.builtin.meta: end_host
+  ansible.builtin.meta: end_role
   when: rocky_template_probe.rc == 0
 
 - name: Ensure image cache dir exists

@@ -8,20 +8,18 @@
   register: pveam_available
   changed_when: false
 
-- name: Pick latest Ubuntu LXC template filename
+- name: Pick latest Ubuntu LXC template matches
   ansible.builtin.set_fact:
-    ubuntu_lxc_template: >-
-      {{ (pveam_available.stdout_lines
-          | select('match', ubuntu_lxc_template_pattern)
-          | map('regex_replace', '^.*\\s', '')
-          | list
-          | sort
-          | last) | default(None) }}
+    ubuntu_lxc_matches: "{{ pveam_available.stdout_lines | map('regex_replace', '^.*\\s', '') | select('match', ubuntu_lxc_template_pattern) | list | sort }}"
+
+- name: Set chosen template
+  ansible.builtin.set_fact:
+    ubuntu_lxc_template: "{{ ubuntu_lxc_matches[-1] if ubuntu_lxc_matches else '' }}"
 
 - name: Fail if no Ubuntu LXC template is listed
   ansible.builtin.fail:
-    msg: "No Ubuntu LXC template found in `pveam available --section system`."
-  when: ubuntu_lxc_template is none or ubuntu_lxc_template == ""
+    msg: "No Ubuntu LXC template found. Pattern: {{ ubuntu_lxc_template_pattern }}"
+  when: ubuntu_lxc_template == ""
 
 - name: Check whether template is already downloaded
   ansible.builtin.command: "pveam list {{ default_lxc_storage }}"
