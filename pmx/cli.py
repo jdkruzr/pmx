@@ -88,7 +88,7 @@ def cmd_new(**kwargs: object) -> None:
     from pmx.config import load
     from pmx.credentials import ensure_ad_password
     from pmx.ansible_runner import run_playbook
-    from pmx.preflight import assert_name_available
+    from pmx.preflight import assert_ip_available, assert_name_available
     from pmx.translate import extra_vars_from
 
     cfg = load()
@@ -101,6 +101,7 @@ def cmd_new(**kwargs: object) -> None:
         sys.exit(2)
 
     assert_name_available(cfg, kwargs["name"])  # type: ignore[arg-type]
+    assert_ip_available(cfg, kwargs["static_ip"])  # type: ignore[arg-type]
 
     extra_vars = extra_vars_from(kwargs) | {
         "target_node": cfg.default_node,
