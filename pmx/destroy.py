@@ -1,4 +1,4 @@
-"""pmx destroy — remove AD computer object and destroy Proxmox resource."""
+"""pmx destroy — remove AD computer object, DNS records, and Proxmox resource."""
 
 # FCIS: imperative shell
 
@@ -53,6 +53,7 @@ def run(name: str, yes: bool) -> int:
         "guest_ip": state.ip if state else None,
         "domain_join": domain_joined,
         "ad_domain": cfg.ad_domain,
+        "ad_realm": cfg.ad_realm,
         "ad_join_user": cfg.ad_join_user,
     }
     return run_playbook("destroy.yml", extra_vars)

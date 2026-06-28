@@ -1,9 +1,10 @@
 ---
 # Destroy sequence:
-#   1. (optional) ssh to guest and run `adcli delete-computer`
-#   2. stop + destroy the Proxmox resource on the node
+#   1. (optional) ssh to guest and run `adcli delete-computer`   (guest-side)
+#   2. (optional) deregister DNS A + PTR from the DC             (DC-side)
+#   3. stop + destroy the Proxmox resource on the node
 
-- name: Pre-destroy AD cleanup (if domain-joined and reachable)
+- name: Pre-destroy AD + DNS cleanup (if domain-joined)
   hosts: localhost
   gather_facts: false
   become: false
@@ -21,6 +22,33 @@
       no_log: true
       register: adcli_out
       changed_when: adcli_out.rc == 0
+      failed_when: false
+
+    # DC-side, so it works even when the guest is already shut down (adcli above
+    # would silently no-op in that case). nsupdate -g auto-discovers each zone's
+    # master via SOA; both the AD forward zone and the (Zentyal-classic) reverse
+    # zone accept GSS-TSIG updates from realm principals, so the join user can
+    # delete the records. Non-fatal: a leftover record must never block a destroy.
+    - name: Deregister DNS A + PTR from the DC (GSS-TSIG, works if guest is gone)
+      ansible.builtin.shell: |
+        set -o pipefail
+        ccache="$(mktemp -u /tmp/pmx_krb_XXXXXX)"
+        export KRB5CCNAME="FILE:${ccache}"
+        trap 'kdestroy -q 2>/dev/null || true; rm -f "${ccache}"' EXIT
+        printf '%s' "$AD_JOIN_PASSWORD" | kinit "{{ ad_join_user }}@{{ ad_realm }}"
+        rev="$(echo '{{ guest_ip }}' | awk -F. '{print $4"."$3"."$2"."$1".in-addr.arpa"}')"
+        nsupdate -g <<NSU
+        update delete {{ guest_name }}.{{ ad_domain }}. A
+        send
+        update delete ${rev}. PTR
+        send
+        NSU
+      args:
+        executable: /bin/bash
+      when: domain_join | bool and guest_ip is not none
+      no_log: true
+      register: dns_dereg
+      changed_when: dns_dereg.rc == 0
       failed_when: false
 
 - name: Destroy Proxmox resource
