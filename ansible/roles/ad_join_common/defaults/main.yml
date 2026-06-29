@@ -8,3 +8,10 @@ sssd_simple_allow_groups:
   - domain_admins
 sssd_default_shell: /bin/bash
 sssd_fallback_homedir: /home/%u
+
+# Self-register and maintain this host's AD DNS records (forward A + reverse PTR)
+# via SSSD dynamic DNS (GSS-TSIG, machine account). On by default so every joined
+# guest lands in DNS automatically; `pmx destroy` removes the records on teardown.
+sssd_dyndns_update: true
+sssd_dyndns_update_ptr: true
+sssd_dyndns_refresh_interval: 43200
