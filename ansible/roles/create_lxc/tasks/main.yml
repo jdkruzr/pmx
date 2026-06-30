@@ -22,11 +22,12 @@
   args:
     executable: /bin/bash
   vars:
-    # Version-agnostic so it tracks whatever seed_*_lxc cached (sort|tail -1 picks
-    # the latest), instead of a version pin that goes stale — seed currently has
-    # ubuntu-26.04. Mirrors seed_ubuntu_lxc's ubuntu-[0-9]+\.[0-9]+-standard.
+    # Pinned to 24.04: pve-container (Proxmox 8.2) only supports Ubuntu LXC up to
+    # 24.04 — newer cached templates (e.g. 26.04) are rejected by `pct create`
+    # with "unsupported Ubuntu version". Keep in sync with seed_ubuntu_lxc's
+    # ubuntu_lxc_template_pattern.
     lxc_template_pattern:
-      ubuntu: 'ubuntu-[0-9]+\.[0-9]+-standard'
+      ubuntu: 'ubuntu-24\.04-standard'
       rocky: 'rockylinux-9-default'
   register: lxc_template_probe
   changed_when: false
