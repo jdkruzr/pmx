@@ -6,6 +6,7 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
+source "${REPO_ROOT}/tests/integration/_guard.sh"
 
 smoke_test() {
   local os="$1"

@@ -3,6 +3,7 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
+source "${REPO_ROOT}/tests/integration/_guard.sh"
 
 : "${AD_JOIN_PASSWORD:?Export AD_JOIN_PASSWORD first.}"
 
