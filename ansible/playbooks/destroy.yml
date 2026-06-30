@@ -34,10 +34,20 @@
       changed_when: dc_dereg.rc == 0
       failed_when: false
 
-    - name: Show DC-side cleanup result
+    # dc_dereg.sh always exits 0 when it runs (its own steps are non-fatal), so a
+    # non-zero rc here means the ssh transport to the DC failed and NOTHING was
+    # cleaned up. Surface that loudly rather than letting failed_when:false hide it
+    # — but still never block the Proxmox destroy that follows.
+    - name: Report DC-side cleanup result
       ansible.builtin.debug:
-        var: dc_dereg.stdout_lines
-      when: domain_join | bool and dc_dereg.stdout_lines is defined
+        msg: >-
+          {{ dc_dereg.stdout_lines
+             if (dc_dereg.rc | default(1)) == 0
+             else ['WARNING: DC-side deregistration did NOT run (rc='
+                   ~ (dc_dereg.rc | default('?')) ~ '). AD/DNS records for '
+                   ~ guest_name ~ ' may still exist; check ' ~ dc_ssh_host
+                   ~ ' reachability and sudo.'] + (dc_dereg.stderr_lines | default([])) }}
+      when: domain_join | bool and dc_dereg is defined
 
 - name: Destroy Proxmox resource
   hosts: "{{ target_node }}"
