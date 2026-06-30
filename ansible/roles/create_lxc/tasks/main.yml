@@ -71,6 +71,11 @@
          else (static_ip | ansible.utils.ipaddr('network') | ansible.utils.ipmath(1)) }}
   when: static_ip is not none
 
+# Storage split: the template comes from default_lxc_storage (cephfs supports
+# vztmpl), but the rootfs needs a rootdir-capable backend. CephFS does NOT
+# support container rootdir, so the rootfs goes on default_storage (the bwrx RBD
+# pool), which is shared + rootdir-capable. Proxmox krbd-maps RBD for containers
+# regardless of the storage's krbd flag.
 - name: Create unprivileged LXC with required features
   ansible.builtin.command: >
     pct create {{ new_vmid }}
@@ -78,7 +83,7 @@
     --hostname {{ guest_name }}
     --cores {{ cores }}
     --memory {{ memory }}
-    --rootfs {{ default_lxc_storage }}:{{ disk }}
+    --rootfs {{ default_storage }}:{{ disk }}
     --net0 name=eth0,bridge={{ default_bridge }},firewall=0,ip={{ 'dhcp' if not static_ip else (static_ip + ',gw=' + effective_static_gw) }}
     --unprivileged 1
     --features nesting=1,keyctl=1
