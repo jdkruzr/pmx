@@ -151,6 +151,18 @@
     timeout: 300
     delay: 5
 
+# DHCP can hand this IP to a brand-new guest whose predecessor left a now-wrong
+# host key in the operator's known_hosts. The configure play connects with
+# StrictHostKeyChecking=accept-new, which auto-adds UNKNOWN keys but still
+# REJECTS a CHANGED one — so a stale entry hard-fails the connection. Drop any
+# existing key for this IP on the controller before we connect; accept-new then
+# records the fresh one.
+- name: Clear any stale SSH host key for the (possibly DHCP-recycled) guest IP
+  ansible.builtin.command: "ssh-keygen -R {{ guest_ip }}"
+  delegate_to: localhost
+  changed_when: false
+  failed_when: false
+
 - name: Add new guest to in-memory inventory as `just_created`
   ansible.builtin.add_host:
     name: "{{ guest_name }}"

@@ -130,6 +130,16 @@
     msg: "Container {{ guest_name }} (VMID {{ new_vmid }}) did not acquire an IPv4 address within the timeout."
   when: guest_ip is none or guest_ip == ""
 
+# DHCP can hand this IP to a brand-new container whose predecessor left a
+# now-wrong host key in the operator's known_hosts. accept-new auto-adds an
+# UNKNOWN key but REJECTS a CHANGED one, so a stale entry hard-fails the connect.
+# Drop any existing key for this IP on the controller before we connect.
+- name: Clear any stale SSH host key for the (possibly DHCP-recycled) guest IP
+  ansible.builtin.command: "ssh-keygen -R {{ guest_ip }}"
+  delegate_to: localhost
+  changed_when: false
+  failed_when: false
+
 - name: Add container to in-memory inventory as `just_created`
   ansible.builtin.add_host:
     name: "{{ guest_name }}"
