@@ -25,7 +25,7 @@
       ansible.builtin.shell: >-
         ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=10
         {{ dc_ssh_host }} sudo bash -s --
-        {{ guest_name | quote }} {{ guest_ip | default('', true) | quote }} {{ ad_domain | quote }}
+        {{ guest_name | quote }} {{ ad_domain | quote }} {{ guest_ip | default('', true) | quote }}
         < {{ (playbook_dir ~ '/../files/dc_dereg.sh') | quote }}
       args:
         executable: /bin/bash

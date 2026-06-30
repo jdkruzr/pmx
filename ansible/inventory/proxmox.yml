@@ -1,5 +1,10 @@
 # Static inventory of Proxmox cluster nodes.
 # Guests are added dynamically at provision time via `ansible.builtin.add_host`.
+#
+# `pve01` is kept as the create-side alias for default_node (-> cerritos/.12),
+# used by seed/provision/reconfigure. `pmx destroy` targets a guest's ACTUAL
+# node by its real Proxmox name (discovered via `pvesh get /cluster/resources`),
+# so every node is also listed here by name. cerritos and pve01 both map to .12.
 all:
   children:
     proxmox:
@@ -7,4 +12,18 @@ all:
         pve01:
           ansible_host: 192.168.9.12
           ansible_user: root
-      # Add further cluster nodes here as pve02, pve03 with their ansible_host.
+        reliant:
+          ansible_host: 192.168.9.10
+          ansible_user: root
+        discovery:
+          ansible_host: 192.168.9.11
+          ansible_user: root
+        cerritos:
+          ansible_host: 192.168.9.12
+          ansible_user: root
+        excelsior:
+          ansible_host: 192.168.9.13
+          ansible_user: root
+        kelvin:
+          ansible_host: 192.168.9.14
+          ansible_user: root

@@ -11,17 +11,29 @@
 # needed and it works even when the guest is already powered off. Every step is
 # idempotent and non-fatal: a missing record/object must never block a teardown.
 #
-# Invoked over ssh, script on stdin, three positional args:
-#   ssh <dc> sudo bash -s -- <name> <ip> <domain> < dc_dereg.sh
+# Invoked over ssh, script on stdin. IP is LAST and optional: ssh flattens argv
+# to a string and the remote re-splits it, so an empty *middle* arg would vanish
+# and shift the others — but a missing *trailing* arg is harmless (we default it
+# and resolve the IP from DNS below).
+#   ssh <dc> sudo bash -s -- <name> <domain> [ip] < dc_dereg.sh
 set -u
 
 name="${1:-}"
-ip="${2:-}"
-domain="${3:-}"
+domain="${2:-}"
+ip="${3:-}"
 
 if [ -z "$name" ] || [ -z "$domain" ]; then
-  echo "usage: dc_dereg.sh <name> <ip> <domain>" >&2
+  echo "usage: dc_dereg.sh <name> <domain> [ip]" >&2
   exit 2
+fi
+
+# If no IP was supplied (e.g. a guest not tracked in pmx state), resolve it from
+# the live forward A record so we can still delete the A by value and derive the
+# PTR. If there's no A record either, the steps below cleanly report "absent".
+if [ -z "$ip" ]; then
+  ip="$(dig +short "$name.$domain" @127.0.0.1 2>/dev/null \
+        | grep -E '^[0-9]+(\.[0-9]+){3}$' | head -1)"
+  [ -n "$ip" ] && echo "[dns]  resolved $name.$domain -> $ip (no IP supplied)"
 fi
 
 # 1) Forward A (Samba AD/DLZ). samba-tool dns delete is NOT idempotent — it

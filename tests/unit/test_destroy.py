@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch
 
 from pmx.destroy import _query_cluster, run
 
 
 def test_destroy_missing_from_cluster_returns_1() -> None:
-    """Test that destroying a guest not found on cluster returns 1."""
-    with patch("pmx.destroy.load") as mock_load, \
-         patch("pmx.destroy.find_by_name") as mock_find, \
-         patch("pmx.destroy._query_cluster") as mock_query:
-
+    """Destroying a guest not found anywhere on the cluster returns 1."""
+    with (
+        patch("pmx.destroy.load") as mock_load,
+        patch("pmx.destroy.find_by_name") as mock_find,
+        patch("pmx.destroy._query_cluster") as mock_query,
+    ):
         cfg = MagicMock()
         cfg.state_log_path = "/tmp/state.jsonl"
         cfg.proxmox_ssh_host = "root@192.168.9.12"
@@ -26,65 +28,62 @@ def test_destroy_missing_from_cluster_returns_1() -> None:
 
 
 def test_destroy_state_missing_path_warns_and_continues() -> None:
-    """Test that destroying a guest not in state log warns but continues."""
-    with patch("pmx.destroy.load") as mock_load, \
-         patch("pmx.destroy.find_by_name") as mock_find, \
-         patch("pmx.destroy._query_cluster") as mock_query, \
-         patch("pmx.destroy.run_playbook") as mock_playbook, \
-         patch("pmx.destroy.click.echo") as mock_echo:
-
+    """A guest absent from the state log warns, still destroys, and targets the
+    node the cluster reports it on."""
+    with (
+        patch("pmx.destroy.load") as mock_load,
+        patch("pmx.destroy.find_by_name") as mock_find,
+        patch("pmx.destroy._query_cluster") as mock_query,
+        patch("pmx.destroy.run_playbook") as mock_playbook,
+        patch("pmx.destroy.click.echo") as mock_echo,
+    ):
         cfg = MagicMock()
         cfg.state_log_path = "/tmp/state.jsonl"
         cfg.proxmox_ssh_host = "root@192.168.9.12"
         cfg.default_node = "pve01"
         cfg.ad_domain = "broken.wrx"
-        cfg.ad_join_user = "jtd"
+        cfg.dc_ssh_host = "sysop@192.168.9.20"
         mock_load.return_value = cfg
 
-        # State not found
+        # State not found, but guest exists in the cluster on excelsior.
         mock_find.return_value = None
-
-        # But guest exists in cluster
-        mock_query.return_value = {"test": (101, "vm")}
+        mock_query.return_value = {"test": (101, "vm", "excelsior")}
         mock_playbook.return_value = 0
 
         result = run("test", yes=True)
 
-        # Check that warning was printed
-        warning_calls = [call for call in mock_echo.call_args_list
-                        if "not in" in str(call)]
+        warning_calls = [c for c in mock_echo.call_args_list if "not in" in str(c)]
         assert len(warning_calls) > 0
 
-        # Should continue and call playbook
         assert mock_playbook.called
+        _playbook, extra_vars = mock_playbook.call_args[0]
+        assert extra_vars["target_node"] == "excelsior"
+        # Not pmx-managed -> attempt dereg idempotently (dc_ssh_host is set).
+        assert extra_vars["domain_join"] is True
         assert result == 0
 
 
-def test_query_cluster_parses_qm_and_pct_output() -> None:
-    """Test that _query_cluster correctly parses qm and pct output."""
-    ssh_output = """VMID NAME                 STATUS CORES MEMORY DISK
-    101 ubuntu-vm            running    2 2048.0  32
-    102 other-vm             stopped    1 1024.0  16
----
-VMID STATUS LOCK NAME
-    201 running      lxc-container
-    202 stopped      another-lxc
-"""
+def test_query_cluster_parses_pvesh_json() -> None:
+    """_query_cluster parses pvesh /cluster/resources JSON into
+    name -> (vmid, kind, node), mapping qemu->vm and lxc->lxc, ignoring non-guests."""
+    pvesh_json = json.dumps(
+        [
+            {"name": "ubuntu-vm", "vmid": 101, "node": "cerritos", "type": "qemu"},
+            {"name": "other-vm", "vmid": 102, "node": "excelsior", "type": "qemu"},
+            {"name": "lxc-container", "vmid": 201, "node": "kelvin", "type": "lxc"},
+            {"id": "storage/cephfs", "type": "storage"},  # non-guest, must be ignored
+        ]
+    )
 
     with patch("pmx.destroy.subprocess.run") as mock_run:
         mock_result = MagicMock()
-        mock_result.stdout = ssh_output
+        mock_result.stdout = pvesh_json
         mock_result.returncode = 0
         mock_run.return_value = mock_result
 
         result = _query_cluster("root@192.168.9.12")
 
-        # Check VMs
-        assert ("ubuntu-vm", (101, "vm")) in result.items()
-        assert ("other-vm", (102, "vm")) in result.items()
-
-        # Check LXCs
-        assert ("lxc-container", (201, "lxc")) in result.items()
-        assert ("another-lxc", (202, "lxc")) in result.items()
-
-        assert len(result) == 4
+        assert result["ubuntu-vm"] == (101, "vm", "cerritos")
+        assert result["other-vm"] == (102, "vm", "excelsior")
+        assert result["lxc-container"] == (201, "lxc", "kelvin")
+        assert len(result) == 3  # storage entry ignored
