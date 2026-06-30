@@ -37,7 +37,7 @@ NONAD="pmxtest-nodomain-$$"
 uv run pmx new --name "${NONAD}" --kind lxc --os ubuntu --no-domain \
   --cores 1 --memory 512 --disk 8
 uv run pmx destroy "${NONAD}" --yes 2>&1 | tee /tmp/destroy.log
-grep -q "skipping AD computer object cleanup" /tmp/destroy.log
+grep -q "skipping AD/DNS deregistration" /tmp/destroy.log
 
 echo "=== AC12.3 — destroy a guest not in state log ==="
 # Create a guest by hand via pct using the Rocky LXC template that `pmx seed`

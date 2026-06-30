@@ -42,6 +42,11 @@ def run(name: str, yes: bool) -> int:
         maybe_joined = True
     else:
         maybe_joined = state.domain_joined
+        if not maybe_joined:
+            click.echo(
+                f"{name} is not domain-joined; skipping AD/DNS deregistration.",
+                err=True,
+            )
 
     if not yes:
         click.confirm(
