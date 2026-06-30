@@ -10,7 +10,6 @@ import click
 
 from pmx.ansible_runner import run_playbook
 from pmx.config import load
-from pmx.credentials import ensure_ad_password
 from pmx.state import find_by_name
 
 
@@ -42,8 +41,17 @@ def run(name: str, yes: bool) -> int:
             abort=True,
         )
 
-    if domain_joined:
-        ensure_ad_password(prompt=f"AD join password ({cfg.ad_join_user}@{cfg.ad_domain}): ")
+    # DC-side teardown (DNS A/PTR + computer object) runs on the Samba DC itself
+    # via cfg.dc_ssh_host, using that host's own root tooling — no AD password is
+    # prompted here. If the guest is domain-joined but no DC host is configured,
+    # warn: the Proxmox resource will still be destroyed, but AD/DNS records linger.
+    if domain_joined and not cfg.dc_ssh_host:
+        click.echo(
+            "Warning: dc_ssh_host is not set in config; skipping AD/DNS "
+            "deregistration. The guest's computer object and DNS records will "
+            "be left behind. Set dc_ssh_host to enable DC-side cleanup.",
+            err=True,
+        )
 
     extra_vars = {
         "target_node": cfg.default_node,
@@ -51,10 +59,9 @@ def run(name: str, yes: bool) -> int:
         "guest_vmid": vmid,
         "guest_kind": kind,
         "guest_ip": state.ip if state else None,
-        "domain_join": domain_joined,
+        "domain_join": domain_joined and bool(cfg.dc_ssh_host),
         "ad_domain": cfg.ad_domain,
-        "ad_realm": cfg.ad_realm,
-        "ad_join_user": cfg.ad_join_user,
+        "dc_ssh_host": cfg.dc_ssh_host,
     }
     return run_playbook("destroy.yml", extra_vars)
 

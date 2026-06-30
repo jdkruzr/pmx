@@ -1,69 +1,43 @@
 ---
 # Destroy sequence:
-#   1. (optional) ssh to guest and run `adcli delete-computer`        (guest-side)
-#   2. (optional) DC-side cleanup: delete DNS A + PTR + computer object
-#   3. stop + destroy the Proxmox resource on the node
+#   1. DC-side cleanup (on the Samba AD DC): delete DNS A + PTR + computer object
+#   2. stop + destroy the Proxmox resource on the node
+#
+# The DC-side step ssh'es to the Samba AD DC ({{ dc_ssh_host }}) and runs the
+# canonical local tooling there as root: samba-tool (machine account) for the
+# AD-integrated forward zone and the computer object, and nsupdate -l (the BIND
+# session key) for the classic reverse zone. Running on the DC against the local
+# databases means no Kerberos password is needed and it works even when the
+# guest is already powered off — so there is no guest-side step and no AD
+# credential prompt on destroy. Every sub-step is idempotent and non-fatal: a
+# leftover must never block a teardown. The logic lives in files/dc_dereg.sh and
+# is piped to the DC's shell over ssh (no copy/deploy step required).
+#
+# The task is gated on `domain_join`, which pmx sets false when dc_ssh_host is
+# unset, so this whole play no-ops for non-joined guests or unconfigured DCs.
 
-- name: Pre-destroy AD + DNS cleanup (if domain-joined)
+- name: DC-side AD + DNS cleanup (if domain-joined)
   hosts: localhost
   gather_facts: false
   become: false
   tasks:
-    - name: Run adcli delete-computer on the guest (graceful, if still up)
-      ansible.builtin.shell: |
-        set -o pipefail
-        printf '%s' "$AD_JOIN_PASSWORD" \
-        | ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=10 \
-              {{ 'ansible' if guest_kind == 'vm' else 'root' }}@{{ guest_ip }} \
-              "sudo adcli delete-computer $(hostname -s) -U {{ ad_join_user }} --stdin-password --domain={{ ad_domain }} || echo 'adcli delete-computer failed (non-fatal)'"
-      args:
-        executable: /bin/bash
-      when: domain_join | bool and guest_ip is not none
-      no_log: true
-      register: adcli_out
-      changed_when: adcli_out.rc == 0
-      failed_when: false
-
-    # DC-side, so it works even when the guest is already powered off (the adcli
-    # step above silently no-ops then). One kinit as the join user drives all
-    # three deletes; both DNS zones and the directory accept GSS-TSIG/Kerberos
-    # from realm principals. Non-fatal throughout — a leftover must never block a
-    # destroy. samba-tool is optional on the workstation (install samba-common-bin
-    # to enable the computer-object delete); DNS cleanup only needs nsupdate.
-    - name: Deregister DNS (A + PTR) and AD computer object from the DC
-      ansible.builtin.shell: |
-        set -o pipefail
-        ccache="$(mktemp -u /tmp/pmx_krb_XXXXXX)"
-        export KRB5CCNAME="FILE:${ccache}"
-        trap 'kdestroy -q 2>/dev/null || true; rm -f "${ccache}"' EXIT
-        printf '%s' "$AD_JOIN_PASSWORD" | kinit "{{ ad_join_user }}@{{ ad_realm }}"
-
-        # Forward A record (the hostname alone is enough to target it).
-        printf 'update delete %s.%s. A\nsend\n' '{{ guest_name }}' '{{ ad_domain }}' \
-          | nsupdate -g || echo "A-record delete reported an error (non-fatal)"
-
-        # Reverse PTR (only when the IP is known).
-        gip='{{ guest_ip | default("") }}'
-        if printf '%s' "$gip" | grep -qE '^[0-9]+(\.[0-9]+){3}$'; then
-          rev="$(echo "$gip" | awk -F. '{print $4"."$3"."$2"."$1".in-addr.arpa"}')"
-          printf 'update delete %s. PTR\nsend\n' "$rev" \
-            | nsupdate -g || echo "PTR delete reported an error (non-fatal)"
-        fi
-
-        # AD computer object (DC-side; covers the powered-off-guest case).
-        if command -v samba-tool >/dev/null 2>&1; then
-          samba-tool computer delete '{{ guest_name }}' -k yes -H 'ldap://{{ ad_domain }}' \
-            || echo "samba-tool computer delete reported an error (non-fatal; may already be gone)"
-        else
-          echo "NOTE: samba-tool not installed on this workstation; computer object '{{ guest_name }}' left in place. Install samba-common-bin to enable DC-side cleanup."
-        fi
+    - name: Deregister DNS (A + PTR) and AD computer object on the Samba DC
+      ansible.builtin.shell: >-
+        ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=10
+        {{ dc_ssh_host }} sudo bash -s --
+        {{ guest_name | quote }} {{ guest_ip | default('', true) | quote }} {{ ad_domain | quote }}
+        < {{ (playbook_dir ~ '/../files/dc_dereg.sh') | quote }}
       args:
         executable: /bin/bash
       when: domain_join | bool
-      no_log: true
-      register: ad_dereg
-      changed_when: ad_dereg.rc == 0
+      register: dc_dereg
+      changed_when: dc_dereg.rc == 0
       failed_when: false
+
+    - name: Show DC-side cleanup result
+      ansible.builtin.debug:
+        var: dc_dereg.stdout_lines
+      when: domain_join | bool and dc_dereg.stdout_lines is defined
 
 - name: Destroy Proxmox resource
   hosts: "{{ target_node }}"
