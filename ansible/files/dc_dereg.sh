@@ -67,16 +67,27 @@ if printf '%s' "$ip" | grep -qE '^[0-9]+(\.[0-9]+){3}$'; then
   fi
 fi
 
-# 3) AD computer object (local sam.ldb). Guard with `computer list` so a re-run
-#    is a clean no-op rather than a non-zero error.
-if samba-tool computer list 2>/dev/null | grep -qiFx "${name}\$"; then
-  if samba-tool computer delete "$name" >/dev/null 2>&1; then
-    echo "[ad]   deleted computer object ${name}\$"
+# 3) AD computer object (local sam.ldb). The account's sAMAccountName is the
+#    NetBIOS name — the hostname truncated to <=15 chars and upper-cased — so
+#    matching on the full guest name misses long-named hosts (and leaves an
+#    orphaned account). Resolve the real account by its dNSHostName, then fall
+#    back to an exact name match for short hosts / accounts without a
+#    dNSHostName. Guarded so a re-run is a clean no-op.
+sam_ldb=/var/lib/samba/private/sam.ldb
+acct="$(ldbsearch -H "$sam_ldb" "(dNSHostName=${name}.${domain})" sAMAccountName 2>/dev/null \
+        | sed -n 's/^sAMAccountName: //p' | head -1)"
+acct="${acct%\$}"
+if [ -z "$acct" ] && samba-tool computer list 2>/dev/null | grep -qiFx "${name}\$"; then
+  acct="$name"
+fi
+if [ -n "$acct" ]; then
+  if samba-tool computer delete "$acct" >/dev/null 2>&1; then
+    echo "[ad]   deleted computer object ${acct}\$"
   else
     echo "[ad]   computer-object delete reported an error (non-fatal)"
   fi
 else
-  echo "[ad]   computer object ${name}\$ already absent"
+  echo "[ad]   computer object for ${name} already absent"
 fi
 
 exit 0
