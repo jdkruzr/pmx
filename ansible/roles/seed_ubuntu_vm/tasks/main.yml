@@ -23,6 +23,23 @@
     mode: "0644"
     timeout: 600
 
+# The stock Ubuntu cloud image does not ship qemu-guest-agent. The DHCP
+# provisioning path reads the leased IP back through the agent, so without it
+# `pmx new` (no --static-ip) deadlocks waiting for an agent that the `common`
+# role only installs much later. Bake it into the template so every clone runs
+# the agent from first boot.
+- name: Ensure libguestfs-tools is installed (for virt-customize)
+  ansible.builtin.apt:
+    name: libguestfs-tools
+    state: present
+    update_cache: true
+
+- name: Bake qemu-guest-agent into the image
+  ansible.builtin.command: >
+    virt-customize -a {{ image_cache_dir }}/noble-server-cloudimg-amd64.img
+    --install qemu-guest-agent
+  changed_when: true
+
 - name: Create VM shell for template
   ansible.builtin.command: >
     qm create {{ ubuntu_template_vmid }}
