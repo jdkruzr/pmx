@@ -19,6 +19,8 @@
       | grep -E '{{ lxc_template_pattern[guest_os] }}' \
       | sort \
       | tail -1
+  args:
+    executable: /bin/bash
   vars:
     lxc_template_pattern:
       ubuntu: 'ubuntu-(24|25)\.[0-9]+-standard'
