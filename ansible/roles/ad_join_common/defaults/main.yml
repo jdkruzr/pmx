@@ -9,9 +9,16 @@ sssd_simple_allow_groups:
 sssd_default_shell: /bin/bash
 sssd_fallback_homedir: /home/%u
 
-# Self-register and maintain this host's AD DNS records (forward A + reverse PTR)
-# via SSSD dynamic DNS (GSS-TSIG, machine account). On by default so every joined
-# guest lands in DNS automatically; `pmx destroy` removes the records on teardown.
+# Self-maintain this host's forward A record via SSSD dynamic DNS (GSS-TSIG,
+# machine account) against the AD-integrated forward zone. This is belt-and-
+# suspenders for IP changes over the guest's life; the authoritative initial
+# registration is done from the DC by dc_reg.sh (see _configure.yml).
 sssd_dyndns_update: true
-sssd_dyndns_update_ptr: true
+
+# PTR is deliberately NOT left to SSSD. The reverse zone (9.168.192.in-addr.arpa)
+# is a classic BIND master, updated only by the local session key (nsupdate -l) —
+# it does not accept a machine's GSS-TSIG update to the AD DNS, so SSSD's PTR
+# update could never land and only generated futile retries. The PTR is owned by
+# the DC-side tooling: dc_reg.sh writes it, dc_dereg.sh removes it.
+sssd_dyndns_update_ptr: false
 sssd_dyndns_refresh_interval: 43200

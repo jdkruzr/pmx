@@ -115,6 +115,7 @@ def cmd_new(**kwargs: object) -> None:
         "ceph_conf_path": cfg.ceph_conf_path,
         "ceph_secret_path": cfg.ceph_secret_path,
         "ceph_mons": cfg.ceph_mons,
+        "dc_ssh_host": cfg.dc_ssh_host,
         "state_log_path": str(Path(__file__).resolve().parent.parent / cfg.state_log_path),
     }
 

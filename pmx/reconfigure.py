@@ -55,6 +55,7 @@ def run(name: str) -> int:
         "ad_domain": cfg.ad_domain,
         "ad_realm": cfg.ad_realm,
         "ad_join_user": cfg.ad_join_user,
+        "dc_ssh_host": cfg.dc_ssh_host,
         "ceph_conf_path": cfg.ceph_conf_path,
         "ceph_secret_path": cfg.ceph_secret_path,
         "ceph_mons": cfg.ceph_mons,
