@@ -35,6 +35,7 @@ def test_destroy_state_missing_path_warns_and_continues() -> None:
         patch("pmx.destroy.find_by_name") as mock_find,
         patch("pmx.destroy._query_cluster") as mock_query,
         patch("pmx.destroy.run_playbook") as mock_playbook,
+        patch("pmx.destroy.tombstone") as mock_tombstone,
         patch("pmx.destroy.click.echo") as mock_echo,
     ):
         cfg = MagicMock()
@@ -49,6 +50,7 @@ def test_destroy_state_missing_path_warns_and_continues() -> None:
         mock_find.return_value = None
         mock_query.return_value = {"test": (101, "vm", "excelsior")}
         mock_playbook.return_value = 0
+        mock_tombstone.return_value = None  # untracked guest has nothing to tombstone
 
         result = run("test", yes=True)
 
@@ -61,6 +63,69 @@ def test_destroy_state_missing_path_warns_and_continues() -> None:
         # Not pmx-managed -> attempt dereg idempotently (dc_ssh_host is set).
         assert extra_vars["domain_join"] is True
         assert result == 0
+
+
+def test_destroy_tombstones_on_success() -> None:
+    """A clean teardown of a tracked guest tombstones it in the state log."""
+    with (
+        patch("pmx.destroy.load") as mock_load,
+        patch("pmx.destroy.find_by_name") as mock_find,
+        patch("pmx.destroy._query_cluster") as mock_query,
+        patch("pmx.destroy.run_playbook") as mock_playbook,
+        patch("pmx.destroy.tombstone") as mock_tombstone,
+        patch("pmx.destroy.click.echo") as mock_echo,
+    ):
+        cfg = MagicMock()
+        cfg.state_log_path = "/tmp/state.jsonl"
+        cfg.proxmox_ssh_host = "root@192.168.9.12"
+        cfg.ad_domain = "broken.wrx"
+        cfg.dc_ssh_host = "sysop@192.168.9.20"
+        mock_load.return_value = cfg
+
+        state = MagicMock()
+        state.domain_joined = True
+        state.ip = "192.168.9.95"
+        mock_find.return_value = state
+        mock_query.return_value = {"cumulus": (114, "vm", "cerritos")}
+        mock_playbook.return_value = 0
+        mock_tombstone.return_value = state  # a tombstone was written
+
+        result = run("cumulus", yes=True)
+
+        assert result == 0
+        mock_tombstone.assert_called_once_with(cfg.state_log_path, "cumulus")
+        marked = [c for c in mock_echo.call_args_list if "Marked cumulus destroyed" in str(c)]
+        assert len(marked) == 1
+
+
+def test_destroy_skips_tombstone_on_failure() -> None:
+    """A failed teardown leaves the record live so a retry still sees it."""
+    with (
+        patch("pmx.destroy.load") as mock_load,
+        patch("pmx.destroy.find_by_name") as mock_find,
+        patch("pmx.destroy._query_cluster") as mock_query,
+        patch("pmx.destroy.run_playbook") as mock_playbook,
+        patch("pmx.destroy.tombstone") as mock_tombstone,
+        patch("pmx.destroy.click.echo"),
+    ):
+        cfg = MagicMock()
+        cfg.state_log_path = "/tmp/state.jsonl"
+        cfg.proxmox_ssh_host = "root@192.168.9.12"
+        cfg.ad_domain = "broken.wrx"
+        cfg.dc_ssh_host = "sysop@192.168.9.20"
+        mock_load.return_value = cfg
+
+        state = MagicMock()
+        state.domain_joined = True
+        state.ip = "192.168.9.95"
+        mock_find.return_value = state
+        mock_query.return_value = {"cumulus": (114, "vm", "cerritos")}
+        mock_playbook.return_value = 2  # destroy failed
+
+        result = run("cumulus", yes=True)
+
+        assert result == 2
+        mock_tombstone.assert_not_called()
 
 
 def test_query_cluster_parses_pvesh_json() -> None:

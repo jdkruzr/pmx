@@ -11,7 +11,7 @@ import click
 
 from pmx.ansible_runner import run_playbook
 from pmx.config import load
-from pmx.state import find_by_name
+from pmx.state import find_by_name, tombstone
 
 
 def run(name: str, yes: bool) -> int:
@@ -73,7 +73,18 @@ def run(name: str, yes: bool) -> int:
         "ad_domain": cfg.ad_domain,
         "dc_ssh_host": cfg.dc_ssh_host,
     }
-    return run_playbook("destroy.yml", extra_vars)
+    rc = run_playbook("destroy.yml", extra_vars)
+
+    # On a clean teardown, tombstone the guest in the state log so it stops
+    # reading as live. The log is append-only, so this appends a tombstone of the
+    # last live record rather than rewriting anything; it no-ops for a guest pmx
+    # never tracked. A failed destroy leaves the record live so a retry still
+    # sees it.
+    if rc == 0:
+        if tombstone(cfg.state_log_path, name) is not None:
+            click.echo(f"Marked {name} destroyed in the state log.")
+
+    return rc
 
 
 def _query_cluster(ssh_host: str) -> dict[str, tuple[int, str, str]]:

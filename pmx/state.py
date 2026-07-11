@@ -4,7 +4,14 @@ Append-only JSON Lines; each record is a dict with:
   hostname, vmid, mac, ip, kind ('vm'|'lxc'), os ('ubuntu'|'rocky'),
   domain_joined (bool), cephfs_mounts (list[str]), rbd_disk (int|None),
   extra_packages (list[str]), static_ip (str|None), static_gw (str|None),
-  created_at (ISO8601 str).
+  created_at (ISO8601 str), destroyed_at (ISO8601 str, '' while live).
+
+The log is never rewritten in place. A destroyed guest is recorded by appending
+a tombstone — a copy of its last live record with destroyed_at set — so the file
+stays an immutable audit trail. find_by_name treats a hostname whose newest
+record is a tombstone as absent, so a destroyed guest is no longer "findable" as
+a live one, while a name that is destroyed and later re-created reads as live
+again (its newest record wins).
 """
 
 # FCIS: functional core
@@ -12,7 +19,7 @@ Append-only JSON Lines; each record is a dict with:
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -32,6 +39,12 @@ class GuestRecord:
     static_ip: str | None = None
     static_gw: str | None = None
     created_at: str = ""
+    destroyed_at: str = ""
+
+    @property
+    def is_tombstone(self) -> bool:
+        """True if this record marks the guest as destroyed."""
+        return bool(self.destroyed_at)
 
 
 def _resolve(path: str | Path) -> Path:
@@ -39,7 +52,7 @@ def _resolve(path: str | Path) -> Path:
 
 
 def read_all(log_path: str | Path) -> list[GuestRecord]:
-    """Return every record in the log; returns [] if the file doesn't exist."""
+    """Return every record in the log, tombstones included; [] if no file."""
     p = _resolve(log_path)
     if not p.exists():
         return []
@@ -54,9 +67,18 @@ def read_all(log_path: str | Path) -> list[GuestRecord]:
 
 
 def find_by_name(log_path: str | Path, name: str) -> GuestRecord | None:
-    """Most recent record matching hostname; None if missing."""
+    """The live record for a hostname, or None.
+
+    Returns the most recent record matching the hostname — unless that record is
+    a tombstone, meaning the guest is currently destroyed, in which case the
+    guest is treated as absent (None). A name that was destroyed and later
+    re-created reads as live again, since its newest record is the re-creation.
+    """
     matches = [r for r in read_all(log_path) if r.hostname == name]
-    return matches[-1] if matches else None
+    if not matches:
+        return None
+    latest = matches[-1]
+    return None if latest.is_tombstone else latest
 
 
 def append(log_path: str | Path, record: GuestRecord) -> None:
@@ -69,3 +91,20 @@ def append(log_path: str | Path, record: GuestRecord) -> None:
     with p.open("a") as f:
         f.write(json.dumps(payload, sort_keys=True))
         f.write("\n")
+
+
+def tombstone(log_path: str | Path, name: str) -> GuestRecord | None:
+    """Mark a guest destroyed by appending a tombstone of its last live record.
+
+    Returns the tombstone record written, or None if there was no live record to
+    tombstone (e.g. a guest pmx never tracked, or one already tombstoned). The
+    tombstone copies the live record verbatim with destroyed_at stamped, so the
+    guest's final vmid/ip/mac are preserved for audit. Idempotent: once a guest
+    is tombstoned, find_by_name reads it as absent and a second call no-ops.
+    """
+    live = find_by_name(log_path, name)
+    if live is None:
+        return None
+    stone = replace(live, destroyed_at=datetime.now(tz=timezone.utc).isoformat())
+    append(log_path, stone)
+    return stone

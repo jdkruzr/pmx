@@ -46,7 +46,7 @@ contract. No cluster-side state lives here.
 | `translate.py` | core | `extra_vars_from(kwargs)` — CLI kwargs → ansible JSON |
 | `ansible_runner.py` | shell | `run_playbook(name, extra_vars, dry_run)` — subprocess wrapper |
 | `preflight.py` | shell | `assert_name_available()` — name validation + cluster uniqueness |
-| `state.py` | core | `GuestRecord` dataclass, `read_all/find_by_name/append` for JSONL |
+| `state.py` | core | `GuestRecord` dataclass, `read_all/find_by_name/append/tombstone` for JSONL (append-only; destroy soft-deletes via tombstone) |
 | `destroy.py` | shell | `run(name, yes)` — cluster query + adcli cleanup + playbook |
 | `reconfigure.py` | shell | `run(name)` — replay original build params from state log |
 | `verify.py` | shell | `run(name)` — ssh-based sssd/id/sudoers smoke test |
