@@ -87,7 +87,7 @@ if [ -n "$acct" ]; then
     echo "[ad]   computer-object delete reported an error (non-fatal)"
   fi
 else
-  echo "[ad]   computer object for ${name} already absent"
+  echo "[ad]   no computer object matched ${name} (by dNSHostName=${name}.${domain} or exact name ${name}); nothing deleted. A host joined under a different hostname/NetBIOS name than its guest name needs manual cleanup (samba-tool computer list)."
 fi
 
 exit 0
