@@ -4,12 +4,10 @@
 
 from __future__ import annotations
 
-import json
-import subprocess
-
 import click
 
 from pmx.ansible_runner import run_playbook
+from pmx.cluster import query_cluster
 from pmx.config import load
 from pmx.state import find_by_name, tombstone
 
@@ -21,7 +19,7 @@ def run(name: str, yes: bool) -> int:
     # Authoritative vmid + kind + hosting node from the cluster. The guest may
     # live on any node, not just cfg.default_node, so we target the node that
     # actually hosts it.
-    cluster = _query_cluster(cfg.proxmox_ssh_host)
+    cluster = query_cluster(cfg.proxmox_ssh_host)
     if name not in cluster:
         click.echo(f"No guest named {name!r} found on the cluster.", err=True)
         return 1
@@ -85,45 +83,3 @@ def run(name: str, yes: bool) -> int:
             click.echo(f"Marked {name} destroyed in the state log.")
 
     return rc
-
-
-def _query_cluster(ssh_host: str) -> dict[str, tuple[int, str, str]]:
-    """Return {name: (vmid, kind, node)} for every guest across the cluster.
-
-    Uses `pvesh get /cluster/resources --type vm`, which enumerates qemu VMs and
-    lxc containers on ALL nodes (unlike `qm list`/`pct list`, which are
-    local-node only) — so destroy can target whichever node hosts the guest.
-    """
-    cmd = [
-        "ssh",
-        "-o",
-        "BatchMode=yes",
-        ssh_host,
-        "pvesh get /cluster/resources --type vm --output-format json",
-    ]
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=20)
-    except subprocess.CalledProcessError as exc:
-        click.echo(f"Failed to query Proxmox: {exc.stderr}", err=True)
-        raise click.Abort() from exc
-    except subprocess.TimeoutExpired as exc:
-        click.echo(f"Timed out querying Proxmox ({ssh_host}).", err=True)
-        raise click.Abort() from exc
-
-    try:
-        resources = json.loads(result.stdout or "[]")
-    except json.JSONDecodeError as exc:
-        click.echo(f"Could not parse Proxmox cluster resources: {exc}", err=True)
-        raise click.Abort() from exc
-
-    guests: dict[str, tuple[int, str, str]] = {}
-    for r in resources:
-        name = r.get("name")
-        vmid = r.get("vmid")
-        node = r.get("node")
-        rtype = r.get("type")  # "qemu" or "lxc"
-        if not name or vmid is None or not node or rtype not in ("qemu", "lxc"):
-            continue
-        kind = "vm" if rtype == "qemu" else "lxc"
-        guests[name] = (int(vmid), kind, node)
-    return guests

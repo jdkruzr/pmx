@@ -7,6 +7,7 @@ from __future__ import annotations
 import click
 
 from pmx.ansible_runner import run_playbook
+from pmx.cluster import query_cluster
 from pmx.config import load
 from pmx.credentials import ensure_ad_password
 from pmx.state import find_by_name
@@ -23,11 +24,22 @@ def run(name: str) -> int:
         )
         return 1
 
+    # The guest may live on any node, not just cfg.default_node — discover its
+    # hosting node from the cluster so we reconfigure it where it actually runs.
+    cluster = query_cluster(cfg.proxmox_ssh_host)
+    if name not in cluster:
+        click.echo(
+            f"No guest named {name!r} found on the cluster; cannot reconfigure.",
+            err=True,
+        )
+        return 1
+    _, _, node = cluster[name]
+
     if state.domain_joined:
         ensure_ad_password(prompt=f"AD join password ({cfg.ad_join_user}@{cfg.ad_domain}): ")
 
     extra_vars = {
-        "target_node": cfg.default_node,
+        "target_node": node,
         "guest_name": state.hostname,
         "guest_vmid": state.vmid,
         "guest_kind": state.kind,

@@ -26,7 +26,7 @@ def test_destroy_passes_dc_dereg_vars_to_playbook() -> None:
     with (
         patch("pmx.destroy.load") as mock_load,
         patch("pmx.destroy.find_by_name") as mock_find,
-        patch("pmx.destroy._query_cluster") as mock_query,
+        patch("pmx.destroy.query_cluster") as mock_query,
         patch("pmx.destroy.run_playbook") as mock_playbook,
     ):
         mock_load.return_value = _cfg()
@@ -63,7 +63,7 @@ def test_destroy_without_dc_host_skips_dereg() -> None:
     with (
         patch("pmx.destroy.load") as mock_load,
         patch("pmx.destroy.find_by_name") as mock_find,
-        patch("pmx.destroy._query_cluster") as mock_query,
+        patch("pmx.destroy.query_cluster") as mock_query,
         patch("pmx.destroy.run_playbook") as mock_playbook,
     ):
         mock_load.return_value = _cfg(dc_ssh_host="")
