@@ -3,6 +3,7 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
+source "${REPO_ROOT}/tests/integration/_guard.sh"
 
 : "${AD_JOIN_PASSWORD:?Export AD_JOIN_PASSWORD first.}"
 
@@ -36,7 +37,7 @@ NONAD="pmxtest-nodomain-$$"
 uv run pmx new --name "${NONAD}" --kind lxc --os ubuntu --no-domain \
   --cores 1 --memory 512 --disk 8
 uv run pmx destroy "${NONAD}" --yes 2>&1 | tee /tmp/destroy.log
-grep -q "skipping AD computer object cleanup" /tmp/destroy.log
+grep -q "skipping AD/DNS deregistration" /tmp/destroy.log
 
 echo "=== AC12.3 — destroy a guest not in state log ==="
 # Create a guest by hand via pct using the Rocky LXC template that `pmx seed`
@@ -45,7 +46,7 @@ echo "=== AC12.3 — destroy a guest not in state log ==="
 ORPHAN="pmxtest-orphan-$$"
 ssh root@192.168.9.12 "pct create \$(pvesh get /cluster/nextid) \
   cephfs:vztmpl/\$(pveam list cephfs | grep -oE 'rockylinux-9-default_[^ ]+' | head -1) \
-  --hostname ${ORPHAN} --memory 256 --rootfs cephfs:1 \
+  --hostname ${ORPHAN} --memory 256 --rootfs bwrx:1 \
   --net0 name=eth0,bridge=vmbr0,ip=dhcp --unprivileged 1"
 uv run pmx destroy "${ORPHAN}" --yes 2>&1 | tee /tmp/destroy2.log
 grep -q "not in" /tmp/destroy2.log

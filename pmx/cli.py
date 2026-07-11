@@ -88,7 +88,7 @@ def cmd_new(**kwargs: object) -> None:
     from pmx.config import load
     from pmx.credentials import ensure_ad_password
     from pmx.ansible_runner import run_playbook
-    from pmx.preflight import assert_name_available
+    from pmx.preflight import assert_ip_available, assert_name_available
     from pmx.translate import extra_vars_from
 
     cfg = load()
@@ -101,6 +101,7 @@ def cmd_new(**kwargs: object) -> None:
         sys.exit(2)
 
     assert_name_available(cfg, kwargs["name"])  # type: ignore[arg-type]
+    assert_ip_available(cfg, kwargs["static_ip"])  # type: ignore[arg-type]
 
     extra_vars = extra_vars_from(kwargs) | {
         "target_node": cfg.default_node,
@@ -114,6 +115,7 @@ def cmd_new(**kwargs: object) -> None:
         "ceph_conf_path": cfg.ceph_conf_path,
         "ceph_secret_path": cfg.ceph_secret_path,
         "ceph_mons": cfg.ceph_mons,
+        "dc_ssh_host": cfg.dc_ssh_host,
         "state_log_path": str(Path(__file__).resolve().parent.parent / cfg.state_log_path),
     }
 
@@ -128,10 +130,16 @@ def cmd_new(**kwargs: object) -> None:
 @main.command("destroy")
 @click.argument("name")
 @click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
-def cmd_destroy(name: str, yes: bool) -> None:
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Preflight only: show the node, DNS/AD records, and whether the computer "
+    "object will auto-clean. Changes nothing.",
+)
+def cmd_destroy(name: str, yes: bool, dry_run: bool) -> None:
     """Destroy a guest (removes AD computer object and Proxmox resource)."""
     from pmx import destroy
-    sys.exit(destroy.run(name, yes))
+    sys.exit(destroy.run(name, yes, dry_run=dry_run))
 
 
 @main.command("reconfigure")

@@ -16,3 +16,8 @@ ceph_mons:
   - 192.168.9.13
   - 192.168.9.14
 state_log_path: state/guests.jsonl
+# ssh target for the Samba AD DC. `pmx destroy` ssh'es here to remove a guest's
+# DNS A/PTR and AD computer object with the DC's own root tooling (samba-tool /
+# nsupdate -l), so the account needs passwordless sudo on the DC. Omit to skip
+# DC-side cleanup.
+dc_ssh_host: sysop@192.168.9.20

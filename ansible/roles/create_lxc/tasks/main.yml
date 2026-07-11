@@ -19,9 +19,15 @@
       | grep -E '{{ lxc_template_pattern[guest_os] }}' \
       | sort \
       | tail -1
+  args:
+    executable: /bin/bash
   vars:
+    # Pinned to 24.04: pve-container (Proxmox 8.2) only supports Ubuntu LXC up to
+    # 24.04 — newer cached templates (e.g. 26.04) are rejected by `pct create`
+    # with "unsupported Ubuntu version". Keep in sync with seed_ubuntu_lxc's
+    # ubuntu_lxc_template_pattern.
     lxc_template_pattern:
-      ubuntu: 'ubuntu-(24|25)\.[0-9]+-standard'
+      ubuntu: 'ubuntu-24\.04-standard'
       rocky: 'rockylinux-9-default'
   register: lxc_template_probe
   changed_when: false
@@ -37,13 +43,19 @@
   ansible.builtin.set_fact:
     template_ref: "{{ lxc_template_probe.stdout | trim }}"
 
-- name: Read operator SSH pubkey for container authorized_keys
+# lookup('file', ...) runs on the controller (the workstation running pmx), so
+# read the operator's pubkey from their home there — same as create_vm. The
+# previous '/root/.ssh/...' assumed ansible ran as root on the node, which it
+# doesn't. The container trusts this key so the controller can SSH in to configure.
+- name: Read operator SSH pubkey for container authorized_keys (on the workstation)
   ansible.builtin.set_fact:
-    ci_ssh_pubkey: "{{ lookup('file', '/root/.ssh/id_ed25519.pub', errors='ignore') | default('', true) }}"
+    ci_ssh_pubkey: >-
+      {{ lookup('file', ssh_public_key_path | default('~/.ssh/id_ed25519.pub'),
+                errors='ignore') | default('', true) }}
 
-- name: Fail if no SSH pubkey available on the Proxmox host
+- name: Fail if no SSH pubkey available on the workstation
   ansible.builtin.fail:
-    msg: "root's ~/.ssh/id_ed25519.pub not found on {{ target_node }}; populate it before running."
+    msg: "Could not read {{ ssh_public_key_path | default('~/.ssh/id_ed25519.pub') }} on the workstation. Populate it or set ssh_public_key_path."
   when: ci_ssh_pubkey | length == 0
 
 - name: Render authorized_keys to a temp file (pct consumes a file path)
@@ -60,6 +72,11 @@
          else (static_ip | ansible.utils.ipaddr('network') | ansible.utils.ipmath(1)) }}
   when: static_ip is not none
 
+# Storage split: the template comes from default_lxc_storage (cephfs supports
+# vztmpl), but the rootfs needs a rootdir-capable backend. CephFS does NOT
+# support container rootdir, so the rootfs goes on default_storage (the bwrx RBD
+# pool), which is shared + rootdir-capable. Proxmox krbd-maps RBD for containers
+# regardless of the storage's krbd flag.
 - name: Create unprivileged LXC with required features
   ansible.builtin.command: >
     pct create {{ new_vmid }}
@@ -67,7 +84,7 @@
     --hostname {{ guest_name }}
     --cores {{ cores }}
     --memory {{ memory }}
-    --rootfs {{ default_lxc_storage }}:{{ disk }}
+    --rootfs {{ default_storage }}:{{ disk }}
     --net0 name=eth0,bridge={{ default_bridge }},firewall=0,ip={{ 'dhcp' if not static_ip else (static_ip + ',gw=' + effective_static_gw) }}
     --unprivileged 1
     --features nesting=1,keyctl=1
@@ -129,6 +146,16 @@
   ansible.builtin.fail:
     msg: "Container {{ guest_name }} (VMID {{ new_vmid }}) did not acquire an IPv4 address within the timeout."
   when: guest_ip is none or guest_ip == ""
+
+# DHCP can hand this IP to a brand-new container whose predecessor left a
+# now-wrong host key in the operator's known_hosts. accept-new auto-adds an
+# UNKNOWN key but REJECTS a CHANGED one, so a stale entry hard-fails the connect.
+# Drop any existing key for this IP on the controller before we connect.
+- name: Clear any stale SSH host key for the (possibly DHCP-recycled) guest IP
+  ansible.builtin.command: "ssh-keygen -R {{ guest_ip }}"
+  delegate_to: localhost
+  changed_when: false
+  failed_when: false
 
 - name: Add container to in-memory inventory as `just_created`
   ansible.builtin.add_host:

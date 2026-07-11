@@ -22,6 +22,12 @@ def run(name: str) -> int:
     ssh_user = "ansible" if state.kind == "vm" else "root"
     host = f"{ssh_user}@{state.ip}"
 
+    # The sudoers drop-in lives under /etc/sudoers.d (0750, root-only) and is itself
+    # 0440 root, so reading/validating it needs root. VMs connect as the
+    # unprivileged `ansible` user (passwordless sudo set up at provision); LXCs
+    # already connect as root.
+    sudo = "" if ssh_user == "root" else "sudo "
+
     # Check ordering: sssd active, then id lookup. Keeps failure messages specific.
     checks = [
         ("sssd is active", "systemctl is-active sssd", "sssd not active (AC14.2)"),
@@ -32,7 +38,8 @@ def run(name: str) -> int:
         ),
         (
             "sudoers drop-in validates",
-            "test -f /etc/sudoers.d/domain-admins && /usr/sbin/visudo -cf /etc/sudoers.d/domain-admins",
+            f"{sudo}test -f /etc/sudoers.d/domain-admins && "
+            f"{sudo}/usr/sbin/visudo -cf /etc/sudoers.d/domain-admins",
             "sudoers drop-in missing or invalid",
         ),
     ]
@@ -40,9 +47,12 @@ def run(name: str) -> int:
     for label, remote_cmd, err_msg in checks:
         cmd = [
             "ssh",
-            "-o", "StrictHostKeyChecking=accept-new",
-            "-o", "BatchMode=yes",
-            "-o", "ConnectTimeout=10",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=10",
             host,
             remote_cmd,
         ]

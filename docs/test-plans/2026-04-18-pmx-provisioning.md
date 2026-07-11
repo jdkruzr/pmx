@@ -36,16 +36,20 @@ This plan covers every acceptance criterion that can't be fully proven by the
 These bash scripts are committed but have NOT been executed during
 implementation. An operator must run each once and confirm green exit.
 
+They create **real guests on the cluster**, so each is guarded: it no-ops
+unless `PMX_LIVE=1` is set (see `tests/integration/_guard.sh`). The commands
+below include that opt-in; without it a run prints `SKIP ...` and exits 0.
+
 | Step | Action | Expected | ACs exercised |
 |------|--------|----------|---------------|
-| 2.1 | `bash tests/integration/test_create_vm.sh` | "Both OS families passed." | AC1.1, AC4.1, AC4.2, AC11.3 |
+| 2.1 | `PMX_LIVE=1 bash tests/integration/test_create_vm.sh` | "Both OS families passed." | AC1.1, AC4.1, AC4.2, AC11.3 |
 | 2.2 | Manual cleanup per script header (`qm stop && qm destroy --purge` for each `pmxtest-ubuntu-*`, `pmxtest-rocky-*`) | VMs gone from `qm list` | — |
-| 2.3 | `bash tests/integration/test_create_lxc.sh` | "Both LXC OS families passed." | AC2.1, AC4.1, AC4.2, AC11.3 |
+| 2.3 | `PMX_LIVE=1 bash tests/integration/test_create_lxc.sh` | "Both LXC OS families passed." | AC2.1, AC4.1, AC4.2, AC11.3 |
 | 2.4 | Manual LXC cleanup (`pct stop && pct destroy --purge` for `pmxtest-lxc-*`) | — | — |
-| 2.5 | `export AD_JOIN_PASSWORD=<real>; bash tests/integration/test_ad_join.sh` | "All four combinations passed." (self-cleans up) | AC1.2, AC1.3, AC2.2, AC3.2 (implicit), AC4.1/4.2, AC5.2, AC7.1 |
-| 2.6 | `export AD_JOIN_PASSWORD=<real>; bash tests/integration/test_kitchen_sink.sh` | "Kitchen-sink VM passed all checks" + "Kitchen-sink LXC passed all checks" | AC2.3, AC8.1, AC8.2, AC9.1, AC10.1, AC11.1, AC11.2 |
-| 2.7 | `export AD_JOIN_PASSWORD=<real>; bash tests/integration/test_lifecycle.sh` | "All lifecycle tests passed." | AC12.1, AC12.2, AC12.3, AC13.1, AC14.1 |
-| 2.8 | `export AD_JOIN_PASSWORD=<real>; bash tests/integration/test_state_log.sh` | "State log tests passed." | AC15.1, AC15.2, AC15.3, AC16.1, AC16.2 |
+| 2.5 | `export AD_JOIN_PASSWORD=<real>; PMX_LIVE=1 bash tests/integration/test_ad_join.sh` | "All four combinations passed." (self-cleans up) | AC1.2, AC1.3, AC2.2, AC3.2 (implicit), AC4.1/4.2, AC5.2, AC7.1 |
+| 2.6 | `export AD_JOIN_PASSWORD=<real>; PMX_LIVE=1 bash tests/integration/test_kitchen_sink.sh` | "Kitchen-sink VM passed all checks" + "Kitchen-sink LXC passed all checks" | AC2.3, AC8.1, AC8.2, AC9.1, AC10.1, AC11.1, AC11.2 |
+| 2.7 | `export AD_JOIN_PASSWORD=<real>; PMX_LIVE=1 bash tests/integration/test_lifecycle.sh` | "All lifecycle tests passed." | AC12.1, AC12.2, AC12.3, AC13.1, AC14.1 |
+| 2.8 | `export AD_JOIN_PASSWORD=<real>; PMX_LIVE=1 bash tests/integration/test_state_log.sh` | "State log tests passed." | AC15.1, AC15.2, AC15.3, AC16.1, AC16.2 |
 
 ## Phase 3: Manually verified ACs
 

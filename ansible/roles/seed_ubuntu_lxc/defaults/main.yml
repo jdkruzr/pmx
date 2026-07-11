@@ -1,2 +1,7 @@
 default_lxc_storage: cephfs
-ubuntu_lxc_template_pattern: "^ubuntu-[0-9]+\\.[0-9]+-standard.*amd64\\.tar\\.zst$"
+# Pinned to 24.04: pve-container (Proxmox 8.2) only supports Ubuntu LXC up to
+# 24.04 — newer templates (24.10/25.04/26.04) exist on the mirror but `pct
+# create` rejects them with "unsupported Ubuntu version". 24.04 is the latest
+# supported LTS and matches the Ubuntu VM template (noble). Bump when Proxmox
+# gains support. NOTE: keep in sync with create_lxc's lxc_template_pattern.
+ubuntu_lxc_template_pattern: "^ubuntu-24\\.04-standard.*amd64\\.tar\\.zst$"

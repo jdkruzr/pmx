@@ -18,6 +18,45 @@
         name: ad_join_rocky
       when: domain_join | bool and guest_os == 'rocky'
 
+    # Authoritatively register the guest's forward A + reverse PTR from the DC,
+    # rather than leaning on the guest's SSSD dynamic DNS — which raced on the
+    # forward zone (A landed only sometimes) and cannot touch the classic-BIND
+    # reverse zone at all (PTR never landed). dc_reg.sh runs the canonical local
+    # tooling on the DC (samba-tool for the A, nsupdate -l for the PTR); it is
+    # idempotent and mirrors dc_dereg.sh, so create/reconfigure/destroy converge.
+    # delegate_to localhost + become:false so this ssh runs from the controller,
+    # not as a sudo on the guest. `ansible_host` is the guest's IP in both the
+    # create and reconfigure inventories.
+    - name: Register guest DNS (A + PTR) authoritatively on the Samba DC
+      ansible.builtin.shell: >-
+        ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=10
+        {{ dc_ssh_host }} sudo bash -s --
+        {{ guest_name | quote }} {{ ad_domain | quote }} {{ ansible_host | quote }}
+        < {{ (playbook_dir ~ '/../files/dc_reg.sh') | quote }}
+      args:
+        executable: /bin/bash
+      delegate_to: localhost
+      become: false
+      when: domain_join | bool and (dc_ssh_host | default('') | length > 0)
+      register: dc_reg
+      changed_when: dc_reg.rc == 0
+      failed_when: false
+
+    # dc_reg.sh always exits 0 when it runs (its own steps are non-fatal), so a
+    # non-zero rc means the ssh transport to the DC failed and NOTHING was
+    # registered. Surface that loudly rather than letting failed_when:false hide
+    # it — but never fail the build over a DNS record.
+    - name: Report DC-side registration result
+      ansible.builtin.debug:
+        msg: >-
+          {{ dc_reg.stdout_lines
+             if (dc_reg.rc | default(1)) == 0
+             else ['WARNING: DC-side DNS registration did NOT run (rc='
+                   ~ (dc_reg.rc | default('?')) ~ '). ' ~ guest_name
+                   ~ ' may be missing its A/PTR records; check ' ~ dc_ssh_host
+                   ~ ' reachability and sudo.'] + (dc_reg.stderr_lines | default([])) }}
+      when: domain_join | bool and dc_reg is defined and (dc_ssh_host | default('') | length > 0)
+
     - name: Attach extra RBD disk (VM only)
       ansible.builtin.include_role:
         name: attach_rbd_disk
