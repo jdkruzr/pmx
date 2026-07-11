@@ -130,10 +130,16 @@ def cmd_new(**kwargs: object) -> None:
 @main.command("destroy")
 @click.argument("name")
 @click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
-def cmd_destroy(name: str, yes: bool) -> None:
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Preflight only: show the node, DNS/AD records, and whether the computer "
+    "object will auto-clean. Changes nothing.",
+)
+def cmd_destroy(name: str, yes: bool, dry_run: bool) -> None:
     """Destroy a guest (removes AD computer object and Proxmox resource)."""
     from pmx import destroy
-    sys.exit(destroy.run(name, yes))
+    sys.exit(destroy.run(name, yes, dry_run=dry_run))
 
 
 @main.command("reconfigure")
