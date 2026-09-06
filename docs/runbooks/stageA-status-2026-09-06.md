@@ -131,9 +131,26 @@ kelvin proved the procedure end to end. Per node, in this order:
 7. `pve8to9 --full`, migrate guests home, `ceph osd unset noout`, wait for
    `HEALTH_OK`
 
-**discovery needs one extra thought:** it holds the only active `mgr`. Rebooting
-it will fail the manager over, so confirm a standby exists or accept a brief
-gap in metrics/dashboard while it restarts.
+**mgr single-point-of-failure — fixed 2026-09-06.** discovery held the *only*
+`mgr` in the cluster (`num_standby: 0`), so there was nothing to fail over to
+and rebooting it would have meant a mgr outage. Rather than work around it,
+added standbys:
+
+```bash
+pveceph mgr create      # on kelvin
+pveceph mgr create      # on cerritos
+```
+
+Now three mgrs exist. Failover was then tested rather than assumed:
+
+```bash
+ceph mgr fail discovery
+```
+
+It promoted cerritos in **~2 seconds** with `HEALTH_OK` throughout, and
+discovery rejoined as a standby. Current state: **cerritos active, discovery +
+kelvin standby**. discovery can now be rebooted like any other node, and the
+cluster has lost a real SPOF that predated this upgrade.
 
 Stage B (Ceph Reef → Squid) should not begin until all four nodes are on
 8.4.21, so the Ceph version mismatch warnings resolve first.
