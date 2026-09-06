@@ -203,8 +203,11 @@ sed -i 's/^\(\s*\)check_qemu_machine_versions();/\1# SKIPPED: &/' \
 PERL5LIB=/root/p8to9/x/usr/share/perl5 perl ./x/usr/bin/pve8to9
 ```
 
-Result: **56 checks, 44 PASS, 4 SKIP, 5 WARN, 3 FAIL**, consistent across all
-four nodes. Two of the three failures are the upgrade itself (`proxmox-ve` <
+Result: **56 checks, 44 PASS, 4 SKIP, 5 WARN, 3 FAIL** — verified by running it
+on all four nodes, which returned byte-identical findings apart from the
+running-guest count (2 on discovery, 3 elsewhere). That uniformity is the
+useful part: Stage A remediation is the same three commands everywhere, and
+no node is carrying a surprise of its own. Two of the three failures are the upgrade itself (`proxmox-ve` <
 8.4-0 → Stage A; Ceph Reef too old → Stage B). The rest are real work:
 
 - **FAIL — `systemd-boot` meta-package installed on all four nodes.** They
