@@ -15,7 +15,7 @@ Stage 0 closed 2026-09-06 01:30 — see
 | Node | Remediations | dist-upgrade | Reboot 1 (kernel) | NIC pin | Reboot 2 | `pve8to9 --full` |
 |---|---|---|---|---|---|---|
 | kelvin | done | done | done | **done** | **done** | **done** |
-| discovery | — | — | — | — | — | — |
+| discovery | done | done | done | **done** | **done** | **done** |
 | cerritos | — | — | — | — | — | — |
 | excelsior | — | — | — | — | — | — |
 
@@ -114,9 +114,32 @@ and OSD — kelvin on 18.2.8 against 18.2.2 elsewhere.
 cluster returned to **HEALTH_OK** with 97/97 PGs active+clean and 8/8 OSDs
 up/in.
 
-## Roll plan for the remaining three
+## discovery — done 2026-09-06 16:03
 
-kelvin proved the procedure end to end. Per node, in this order:
+Ran the kelvin recipe unchanged; no surprises. Guests out (galactica 100 → cerritos
+10 s, globus 103 → excelsior 13 s), remediations, dist-upgrade **rc=0 in 137 s**,
+reboot **130 s**, NIC pinning (`enp1s0f0` MAC `a0:36:9f:37:a9:08` → `nic1`, all
+three checks agreed), second reboot, `pve8to9 --full` = **46 PASS / 1 FAIL**,
+guests home, `noout` cleared, **HEALTH_OK**.
+
+The mgr fix paid off immediately: discovery's mgr was a *standby* by then, so the
+reboots were a non-event for the manager. Three mgrs throughout.
+
+Two gotchas worth carrying to the remaining nodes:
+
+- **Do not poll for "can I SSH in?" to detect a reboot.** sshd stays up for a
+  few seconds into shutdown, so a naive poll connects to the *old* boot and
+  reports success against pre-reboot state. Poll for
+  `/proc/sys/kernel/random/boot_id` to **change** instead.
+- **`ceph -s` can read fewer than 97 `active+clean` PGs** once `noout` is
+  cleared and scrubbing resumes — PGs in `active+clean+scrubbing` are counted
+  separately. `ceph pg stat` shows the real total. Not a problem; do not chase it.
+
+## Roll plan for the remaining two
+
+kelvin proved the procedure and discovery confirmed it. Remaining: **cerritos**
+(currently holds the active mgr, so expect a ~2 s failover) and **excelsior**.
+Per node, in this order:
 
 1. `ceph osd set noout`
 2. Live-migrate its guests off (all guests are on Ceph RBD; ~9 s and <100 ms
