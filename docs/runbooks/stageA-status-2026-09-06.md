@@ -14,7 +14,7 @@ Stage 0 closed 2026-09-06 01:30 — see
 
 | Node | Remediations | dist-upgrade | Reboot 1 (kernel) | NIC pin | Reboot 2 | `pve8to9 --full` |
 |---|---|---|---|---|---|---|
-| kelvin | done | done | done | — | — | — |
+| kelvin | done | done | done | **done** | **done** | **done** |
 | discovery | — | — | — | — | — | — |
 | cerritos | — | — | — | — | — | — |
 | excelsior | — | — | — | — | — | — |
@@ -73,13 +73,67 @@ chasing it.
 Ceph is now intentionally mixed, which is correct mid-roll:
 kelvin's 4 daemons on 18.2.8, the other 12 on 18.2.2.
 
-### Next on kelvin
+### NIC pinning + reboot 2 — done
 
-NIC pinning, then reboot 2, then `pve8to9 --full`, then migrate 106/111/115
-home and `ceph osd unset noout`.
+`pve-network-interface-pinning generate` is safer than it looks: it writes the
+`.link` files to `/usr/local/lib/systemd/network/` and the new config to
+`/etc/network/interfaces.**new**`, leaving the live file untouched until the
+node reboots successfully. There is no `--dry-run`, but three independent
+checks can be made before committing:
 
-**Do the pinning with the JetKVM physically attached.** `vmbr0` currently
-bridges the bare `enp1s0f0`; `pve-network-interface-pinning generate` rewrites
-`/etc/network/interfaces` to stable `nicN` names. It is the one step that edits
-the network config of a machine reachable only over that network. Review the
-generated file and confirm `vmbr0` references the pinned name before rebooting.
+1. `diff /etc/network/interfaces /etc/network/interfaces.new` — confirm
+   `bridge-ports` points at the new name and the address/gateway are unchanged.
+2. Read the `.link` file for the uplink and confirm its `MACAddress=` is the
+   NIC actually in the bridge.
+3. `udevadm test-builtin net_setup_link /sys/class/net/<iface>` — reports the
+   `ID_NET_NAME=` udev *would* assign, without changing anything.
+
+On kelvin all three agreed: `enp1s0f0` (MAC `a0:36:9f:37:a8:58`) → `nic1`, with
+`vmbr0 bridge-ports nic1`. Mapping was `enp6s0→nic0`, `enp1s0f0→nic1`,
+`enp1s0f1→nic2`. The tool also rewrote `host.fw.new` and `sdn/controllers.cfg`,
+both no-ops here (no host firewall rules, no SDN controllers).
+
+Reboot 2 took **45 s** — much faster than reboot 1's 130 s, since no initramfs
+regeneration was involved. Came back with `nic0/nic1/nic2`, `nic1` UP, `vmbr0`
+UP on 192.168.9.14/24, `interfaces.new` applied and cleared, all nine services
+active, zero failed units.
+
+### `pve8to9 --full` (the real one, from 8.4.21)
+
+**56 checks: 46 PASSED, 4 SKIP, 5 WARN, 1 FAIL** — from 3 FAIL at the start.
+
+The single remaining failure is `Hyper-converged Ceph 18 Reef is to old for
+upgrade!`, which is Stage B's job. All five warnings are artifacts of a
+*partial* roll and are expected to clear as the other three nodes come through:
+`HEALTH_WARN` (our own `noout`) plus "multiple running versions" for mon, MDS
+and OSD — kelvin on 18.2.8 against 18.2.2 elsewhere.
+
+### Wrap-up
+
+106/111/115 live-migrated home (9 s each), `ceph osd unset noout`, and the
+cluster returned to **HEALTH_OK** with 97/97 PGs active+clean and 8/8 OSDs
+up/in.
+
+## Roll plan for the remaining three
+
+kelvin proved the procedure end to end. Per node, in this order:
+
+1. `ceph osd set noout`
+2. Live-migrate its guests off (all guests are on Ceph RBD; ~9 s and <100 ms
+   downtime each)
+3. Remove `systemd-boot`; add `non-free-firmware` + install `amd64-microcode`;
+   set `grub2/force_efi_extra_removable` and reinstall `grub-efi-amd64`
+4. `apt-get dist-upgrade` (~150 s)
+5. Reboot; expect ~2 min back, and **expect a transient `mon` clock skew that
+   clears itself in ~75 s**
+6. `pve-network-interface-pinning generate`, verify with the three checks above,
+   reboot (~45 s)
+7. `pve8to9 --full`, migrate guests home, `ceph osd unset noout`, wait for
+   `HEALTH_OK`
+
+**discovery needs one extra thought:** it holds the only active `mgr`. Rebooting
+it will fail the manager over, so confirm a standby exists or accept a brief
+gap in metrics/dashboard while it restarts.
+
+Stage B (Ceph Reef → Squid) should not begin until all four nodes are on
+8.4.21, so the Ceph version mismatch warnings resolve first.
