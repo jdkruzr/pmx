@@ -189,6 +189,58 @@ have to re-derive them from the wiki):
 
 ## Stage A — Patch within PVE 8 to satisfy upgrade preconditions
 
+**`pve8to9` run early, 2026-09-05.** The tool ships in pve-manager 8.4 which
+we don't have yet, but it can be run without installing anything:
+
+```bash
+mkdir -p /root/p8to9 && cd /root/p8to9
+apt-get download pve-manager          # 8.4.21, downloads only
+dpkg-deb -x ./pve-manager_*.deb ./x
+# one check needs an 8.4-only sub (PVE::QemuServer::Machine::get_vm_machine);
+# comment out its call site to let the remaining 55 checks run:
+sed -i 's/^\(\s*\)check_qemu_machine_versions();/\1# SKIPPED: &/' \
+  ./x/usr/share/perl5/PVE/CLI/pve8to9.pm
+PERL5LIB=/root/p8to9/x/usr/share/perl5 perl ./x/usr/bin/pve8to9
+```
+
+Result: **56 checks, 44 PASS, 4 SKIP, 5 WARN, 3 FAIL**, consistent across all
+four nodes. Two of the three failures are the upgrade itself (`proxmox-ve` <
+8.4-0 → Stage A; Ceph Reef too old → Stage B). The rest are real work:
+
+- **FAIL — `systemd-boot` meta-package installed on all four nodes.** They
+  actually boot GRUB (`grub-efi-amd64` 2.06-13+pmx2, ESP holds `BOOT` and
+  `proxmox`), but `systemd-boot` + `systemd-boot-efi` 252.26 are installed
+  alongside. On the Trixie jump this package fights the other boot-related
+  packages and can leave a node unbootable. Remove it **in Stage A**, one node
+  at a time, verifying the node still boots before moving on:
+  ```bash
+  apt remove systemd-boot          # keeps grub-efi-amd64
+  ```
+  See <https://pve.proxmox.com/wiki/Upgrade_from_8_to_9#sd-boot-warning>.
+- **WARN — removable bootloader not maintained.** `/boot/efi/EFI/BOOT/BOOTX64.efi`
+  exists but GRUB isn't set up to refresh it, so the fallback path silently
+  goes stale. Fix once per node in Stage A:
+  ```bash
+  echo 'grub-efi-amd64 grub2/force_efi_extra_removable boolean true' \
+    | debconf-set-selections -v -u
+  apt install --reinstall grub-efi-amd64
+  ```
+- **WARN — `amd64-microcode` not installed.** These are AMD CPUs and the
+  microcode package lives in `non-free-firmware`, so this is the concrete
+  reason to add that component (see the note below — it is *not* needed for
+  NICs). Worth doing in Stage A so the kernel 7.0 boot in Stage C runs on
+  current microcode.
+- **WARN — Ceph `noout` not set.** Set it for the duration of the Ceph work in
+  Stages B and D, and unset it after: `ceph osd set noout` /
+  `ceph osd unset noout`.
+- **WARN — running guests.** Expected; Stage C handles them per node.
+
+Notable passes worth not re-litigating later: storage content types, LVM
+autoactivation and `thin_check_options`, RRD migration free space, IPAM/MAC DB
+migration, notification config, CIFS credential location, custom roles, no
+legacy `lxc.cgroup` keys, no suite mismatch, no GlusterFS, and RBD storages all
+PVE-managed (so no external keyring work).
+
 **Pre-flight recon, 2026-09-05** (`apt-get update` + `-s dist-upgrade` on
 kelvin, no packages installed):
 
@@ -200,14 +252,15 @@ kelvin, no packages installed):
 - Repos are already correct and subscription-free: `pve-no-subscription`,
   `ceph-reef bookworm no-subscription`, and an **empty** `pve-enterprise.list`
   (so no 401s to clean up). `pvesubscription` reports `notfound`, as expected.
-- **`non-free-firmware` is absent from every apt source.** This is a deviation
-  from Proxmox's standard Trixie sources, but **not a risk here**: no
-  `firmware-*`/microcode package is installed on any node, and the NICs use
-  in-tree drivers needing no blobs (`ixgbe` on every uplink, `r8169` on the
-  unused ports). The only firmware complaint in `dmesg` cluster-wide is
-  `regulatory.db` on cerritos — the *wireless* regulatory database, on machines
-  with no wifi. Add the component when rewriting sources for Trixie for
-  correctness, but it does not gate the kernel 7.0 jump.
+- **`non-free-firmware` is absent from every apt source — add it.** No
+  `firmware-*` package is installed on any node, and this is *not* a NIC risk:
+  every uplink is `ixgbe` and the unused ports are `r8169`, both in-tree
+  drivers needing no blobs, and the only `dmesg` firmware complaint
+  cluster-wide is `regulatory.db` on cerritos (the *wireless* regulatory
+  database, on machines with no wifi). The real reason to add the component is
+  **CPU microcode**: `pve8to9` flags missing `amd64-microcode`, which lives in
+  `non-free-firmware`. Add the component and install it in Stage A so the
+  kernel 7.0 boot in Stage C runs on current microcode.
 
 
 The 8→9 wiki requires **pve-manager ≥ 8.4.1** (we're on 8.2.4); Reef→Squid only
