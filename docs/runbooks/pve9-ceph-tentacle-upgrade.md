@@ -380,6 +380,18 @@ repo. All references below were re-verified against the current tree:
   Re-check `el9` vs the Rocky guest's actual RHEL major. Note: `reef`/`ceph.com`
   appears **only** here and in a `docs/implementation-plans/...` history file — no
   other code paths hardcode the release.
+- **Provision guests with `discard=on` (new, found 2026-09-05).** No role sets
+  `discard` anywhere: `seed_ubuntu_vm/tasks/main.yml:62` and
+  `seed_rocky_vm/tasks/main.yml:62` build `--scsi0 {{ default_storage }}:...`
+  without it, `create_vm` only clones and `qm resize`s, and `attach_rbd_disk`
+  passes the disk straight through. Every VM `pmx` creates therefore never
+  releases freed blocks back to RBD, so its image grows monotonically toward
+  fully-allocated and its PBS backups carry the dead data forever. Measured on
+  the live cluster: VM 101 sat at 63 GiB allocated for 12.8 GiB of real data.
+  Add `,discard=on` in the two seed roles (templates propagate it to clones) and
+  in `attach_rbd_disk`. Guests also need periodic `fstrim` — Ubuntu and Rocky
+  both ship the `fstrim.timer` unit, so confirm it is enabled rather than
+  writing a cron job.
 - **Scoped CephFS client key.** `mount_cephfs/defaults/main.yml:10` hands guests
   `name=admin`. Create a restricted `client.pmx-cephfs` key (CephFS-only caps)
   and switch the role to it. Not strictly an upgrade item, but Stage D+ key
