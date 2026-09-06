@@ -47,9 +47,10 @@ Stage A, as the runbook assumes.
 - **Sysctl.** Settings present in `/etc/sysctl.d/` on all four nodes.
 - **NIC names.** Plain `enp*`, one active uplink each, no bonds. Recorded for
   the Stage A pinning step.
-- **Console fallback.** Covered by a JetKVM (confirmed 2026-09-05). One
-  portable IP-KVM for four nodes, so Stage C goes strictly one node at a time
-  with the device attached to the node being upgraded.
+- **Console fallback.** Covered by a JetKVM, already tested against these
+  machines (confirmed 2026-09-05). One portable IP-KVM for four nodes, so
+  Stage C goes one node at a time with the device moved to the node being
+  upgraded.
 - **`reliant` decommission leftovers.** Fully cleaned — see below.
 - **discovery's search domain.** Fixed — see below.
 
