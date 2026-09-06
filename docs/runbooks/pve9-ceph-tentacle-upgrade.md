@@ -189,6 +189,27 @@ have to re-derive them from the wiki):
 
 ## Stage A — Patch within PVE 8 to satisfy upgrade preconditions
 
+**Pre-flight recon, 2026-09-05** (`apt-get update` + `-s dist-upgrade` on
+kelvin, no packages installed):
+
+- **276 upgraded, 11 newly installed, 0 removed.** Both preconditions are met
+  by the plain no-subscription repos already configured:
+  - `pve-manager` 8.2.4 → **8.4.21** (8→9 wiki needs ≥ 8.4.1)
+  - `ceph` 18.2.2-pve1 → **18.2.8-pve1** (Reef→Squid needs ≥ 18.2.4-pve3)
+  - `proxmox-kernel-6.8` 6.8.12-1 → 6.8.12-43
+- Repos are already correct and subscription-free: `pve-no-subscription`,
+  `ceph-reef bookworm no-subscription`, and an **empty** `pve-enterprise.list`
+  (so no 401s to clean up). `pvesubscription` reports `notfound`, as expected.
+- **`non-free-firmware` is absent from every apt source.** This is a deviation
+  from Proxmox's standard Trixie sources, but **not a risk here**: no
+  `firmware-*`/microcode package is installed on any node, and the NICs use
+  in-tree drivers needing no blobs (`ixgbe` on every uplink, `r8169` on the
+  unused ports). The only firmware complaint in `dmesg` cluster-wide is
+  `regulatory.db` on cerritos — the *wireless* regulatory database, on machines
+  with no wifi. Add the component when rewriting sources for Trixie for
+  correctness, but it does not gate the kernel 7.0 jump.
+
+
 The 8→9 wiki requires **pve-manager ≥ 8.4.1** (we're on 8.2.4); Reef→Squid only
 needs 8.2.8 but we're going to 8.4 anyway. Ceph must be **≥ 18.2.4-pve3** (we're
 on 18.2.2-pve1); the bookworm no-subscription repo offers 18.2.8-pve1, the final
