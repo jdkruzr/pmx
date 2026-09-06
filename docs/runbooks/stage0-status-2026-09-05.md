@@ -4,7 +4,8 @@ Living status for the Stage 0 gates in
 [`pve9-ceph-tentacle-upgrade.md`](pve9-ceph-tentacle-upgrade.md).
 
 - **First assessed:** 2026-09-05 (read-only)
-- **Last updated:** 2026-09-05, after the first execution pass
+- **Last updated:** 2026-09-06 01:30, after the execution pass
+- **STATUS: Stage 0 COMPLETE — all gates closed. Stage A is unblocked.**
 
 Work is driven from the laptop over SSH to the four nodes.
 
@@ -54,15 +55,67 @@ Stage A, as the runbook assumes.
 - **`reliant` decommission leftovers.** Fully cleaned — see below.
 - **discovery's search domain.** Fixed — see below.
 
-### Not done
+### Backups — all seven checklist items done
 
-- **Backups item 3 (optional), discard/fstrim.** No disk has `discard=on`.
-  VM 100's `fstrim_cloned_disks=1` is an unrelated agent setting.
-- **Backups item 4, job.** No backup jobs (`pvesh get /cluster/backup` → `[]`).
-- **Backups item 5, first manual run.** PBS holds zero backups.
-- **Backups item 6, node `/etc` + `/etc/pve` to PBS.** Not done.
-- **Backups item 7, test-restore.** Not done. **This is the gate-closer.**
+Full first run completed 2026-09-06 01:04. All seven guests plus all four node
+configs are in PBS; **88.8 GiB stored of the 245 GiB quota (36%)**.
 
+| VM | Zero data | Duration |
+|---|---|---|
+| 113 bifrost | 93% | 7m 13s |
+| 9001 | 85% | 2m 00s |
+| 101 hydrae | 72% | 37m 50s |
+| 112 neptune | 51% | 1h 34m |
+| 9000 | 36% | 7s |
+| 100 galactica | 15% | 2h 15m |
+| 105 tauron2 | 5% | 2h 09m |
+
+The zero-data column is the trim (item 3) paying off: 113 pushed a 128 GiB
+disk in seven minutes at 304 MiB/s because almost all of it read as zero.
+
+- **Item 3, discard/fstrim.** Done on 100, 101, 112, 113. Allocation across the
+  set fell 216 → 146 GiB. Wildly uneven, and worth understanding why: 101 gave
+  back 44 GiB because its LV spans nearly the whole disk; 100 gave back only 9
+  because ~35 GiB sits in unallocated LVM extents `fstrim` cannot reach; 112
+  gave back 1 because it is genuinely close to full.
+- **Item 4, job.** `pbs-nightly` created and **enabled**: 02:00,
+  `keep-last=3,keep-weekly=4`, guests 100,101,105,112,113,9000,9001. Dirty
+  bitmaps were established by the first run, so subsequent runs are incremental.
+- **Item 5, first manual run.** Measured on template 9000: 23 MiB/s. The
+  sustained figure across the real run was ~8-29 MiB/s per stream with the WAN
+  uplink saturating at **~23 MiB/s aggregate** — running three nodes in
+  parallel splits that pipe rather than multiplying it.
+- **Item 6, node configs.** `etc.pxar` + `pve.pxar` in PBS for all four nodes.
+  `/etc/pve` is correctly captured as its own archive (pxar skips it as a mount
+  point inside `/etc`). **Re-run immediately before Stage C on each node.**
+- **Item 7, test-restore — PASSED, gate closed.** Restored 113 to a fresh VMID
+  9113 on kelvin (`--unique 1` to regenerate the MAC, plus `link_down=1`),
+  booted it, and confirmed from inside: hostname `bifrost`, Ubuntu 24.04.4 LTS,
+  `uptime 0 min`, `/` at 9.4 GiB used matching the source exactly. Then
+  destroyed with `--purge`; no RBD image left behind and the live 113 was
+  unaffected throughout.
+
+  **Why this test was the one that mattered:** PBS verification checksums
+  chunks *server-side and never decrypts*. With client-side encryption, a
+  restore using our own keyfile is the only thing that proves the key actually
+  recovers data. `pbs-restore` ran with
+  `--keyfile /etc/pve/priv/storage/Cloud-PBS.com.enc` and produced a bootable
+  guest, so the key and the paper key escrow are now proven rather than assumed.
+
+### Still outstanding (not Stage 0 gates)
+
+- **PBS verification of the stored backups.** Everything currently reads
+  `UNVERIFIED`. A `verify_group` job on vm/105 was triggered via the API and
+  was still running at 01:30 (~40 min for 64 GiB on shared hosted hardware).
+  Our token holds `Datastore.Verify`, so this can be driven from any node:
+  ```bash
+  curl -sk -X POST -H "Authorization: PBSAPIToken=<tokenid>:<secret>" \
+    -H 'Content-Type: application/json' -d '{"backup-type":"vm","backup-id":"105"}' \
+    https://sh14-226.prod.cloud-pbs.com:8007/api2/json/admin/datastore/<ds>/verify
+  ```
+- **105's four snapshots are still present.** Deliberately held back until that
+  verify finishes — do not destroy rollback points while the verification of
+  their replacement is still in flight.
 
 ### Corrected from the first pass
 
@@ -122,9 +175,6 @@ Not required for the upgrade; decide separately.
 
 ## Order from here
 
-1. ~~Accept the missing host key~~ — done (it was excelsior).
-2. ~~Clean up the reliant leftovers~~ — done.
-3. ~~Baseline capture~~ — done.
-4. Backup checklist items 4 → 7, ending with the test-restore that closes the
-   gate. **This is the only remaining blocker.**
-5. ~~Confirm crash-cart access~~ — done (JetKVM). Then Stage A.
+Stage 0 is closed. Before Stage A, apply the `pve8to9` remediations recorded in
+the runbook (remove `systemd-boot`, fix the removable-bootloader debconf, add
+`non-free-firmware` + `amd64-microcode`), one node at a time.
