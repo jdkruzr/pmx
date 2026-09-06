@@ -169,8 +169,13 @@ have to re-derive them from the wiki):
      qm stop 9105 && qm destroy 9105 --purge
      ```
      This closes the gate. Do not start Stage A until it has passed.
-- **Console fallback.** No node has IPMI. Confirm physical/crash-cart access to
-  each node, since SSH-only + dist-upgrade is the main risk.
+- **Console fallback.** No node has IPMI. Covered by a **JetKVM** (confirmed
+  2026-09-05), which satisfies this gate. It is a *single* portable IP-KVM for
+  four nodes, so Stage C must proceed strictly one node at a time with the
+  JetKVM moved to whichever node is being upgraded — do not start a node's
+  dist-upgrade until the device is attached to it and a console is confirmed
+  working. Plan for the reboot to drop you to a `(initramfs)` or emergency
+  shell and be ready to read it.
 - **Baseline capture.** Record `pveversion -v`, `ceph versions`, `ceph osd dump`,
   `ceph auth ls` (redacted), and `ip -br link` on all four nodes.
 - **Investigate the MON-address anomaly.** Still present 2026-09-06: the CephFS

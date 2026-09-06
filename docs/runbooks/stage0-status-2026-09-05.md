@@ -47,6 +47,9 @@ Stage A, as the runbook assumes.
 - **Sysctl.** Settings present in `/etc/sysctl.d/` on all four nodes.
 - **NIC names.** Plain `enp*`, one active uplink each, no bonds. Recorded for
   the Stage A pinning step.
+- **Console fallback.** Covered by a JetKVM (confirmed 2026-09-05). One
+  portable IP-KVM for four nodes, so Stage C goes strictly one node at a time
+  with the device attached to the node being upgraded.
 - **`reliant` decommission leftovers.** Fully cleaned — see below.
 - **discovery's search domain.** Fixed — see below.
 
@@ -58,8 +61,7 @@ Stage A, as the runbook assumes.
 - **Backups item 5, first manual run.** PBS holds zero backups.
 - **Backups item 6, node `/etc` + `/etc/pve` to PBS.** Not done.
 - **Backups item 7, test-restore.** Not done. **This is the gate-closer.**
-- **Console fallback.** Not checkable remotely. Confirm crash-cart access to
-  all four nodes before Stage C.
+
 
 ### Corrected from the first pass
 
@@ -124,4 +126,4 @@ Not required for the upgrade; decide separately.
 3. ~~Baseline capture~~ — done.
 4. Backup checklist items 4 → 7, ending with the test-restore that closes the
    gate. **This is the only remaining blocker.**
-5. Confirm crash-cart access. Then Stage A.
+5. ~~Confirm crash-cart access~~ — done (JetKVM). Then Stage A.
