@@ -6,6 +6,9 @@ Stage 0 closed 2026-09-06 01:30 — see
 [`stage0-status-2026-09-05.md`](stage0-status-2026-09-05.md).
 
 - **Started:** 2026-09-06 14:36
+- **COMPLETED:** 2026-09-07 01:05 — all four nodes on pve-manager 8.4.21 /
+  kernel 6.8.12-43-pve, all 18 Ceph daemons on 18.2.8, NICs pinned, `HEALTH_OK`.
+  **Stage B is unblocked.**
 - **Approach:** canary one node end-to-end (kelvin), then roll the other three.
   Separate reboots for kernel and NIC pinning, so exactly one variable changes
   per reboot.
@@ -17,7 +20,7 @@ Stage 0 closed 2026-09-06 01:30 — see
 | kelvin | done | done | done | **done** | **done** | **done** |
 | discovery | done | done | done | **done** | **done** | **done** |
 | cerritos | done | done | done | **done** | **done** | **done** |
-| excelsior | — | — | — | — | — | — |
+| excelsior | done | done | done | **done** | **done** | **done** |
 
 ## kelvin (canary)
 
@@ -159,43 +162,84 @@ misplaced, ~91 MiB/s. Health stays `HEALTH_OK` throughout (backfill is not a
 warning), but **wait for `ceph pg stat` to return to all `active+clean` before
 starting the next node.**
 
-## Roll plan for the last node
+## excelsior — done 2026-09-07 01:05, and it hid the worst landmine of the upgrade
 
-Three nodes done, all identical. Remaining: **excelsior**. Per node:
+Ran the same recipe, but **excelsior came back from its first reboot still on
+kernel 6.8.12-1 while the other three had moved to 6.8.12-43.**
 
-1. `ceph osd set noout`
-2. Live-migrate its guests off (all guests are on Ceph RBD; ~9 s and <100 ms
-   downtime each)
-3. Remove `systemd-boot`; add `non-free-firmware` + install `amd64-microcode`;
-   set `grub2/force_efi_extra_removable` and reinstall `grub-efi-amd64`
-4. `apt-get dist-upgrade` (~150 s)
-5. Reboot; expect ~2 min back, and **expect a transient `mon` clock skew that
-   clears itself in ~75 s**
-6. `pve-network-interface-pinning generate`, verify with the three checks above,
-   reboot (~45 s)
-7. `pve8to9 --full`, migrate guests home, `ceph osd unset noout`, wait for
-   `HEALTH_OK`
+### The kernel pin
 
-**mgr single-point-of-failure — fixed 2026-09-06.** discovery held the *only*
-`mgr` in the cluster (`num_standby: 0`), so there was nothing to fail over to
-and rebooting it would have meant a mgr outage. Rather than work around it,
-added standbys:
+`/etc/default/grub.d/proxmox-kernel-pin.cfg`, dated 2025-09-09:
 
-```bash
-pveceph mgr create      # on kelvin
-pveceph mgr create      # on cerritos
+```
+GRUB_DEFAULT="gnulinux-advanced-<uuid>>gnulinux-6.8.12-1-pve-advanced-<uuid>"
 ```
 
-Now three mgrs exist. Failover was then tested rather than assumed:
+Because `/etc/default/grub.d/*` is sourced *after* `/etc/default/grub`, this
+pin overrode `GRUB_DEFAULT=0` and hard-bound the node to 6.8.12-1. `apt`
+history shows why it existed — headers, that exact kernel, and
+`thunderbolt-tools` all installed within six minutes on 2025-09-09.
+
+**Why this mattered far more than a wrong kernel today:** in Stage C the Trixie
+upgrade removes the 6.8 kernels and installs 7.0. A node pinned to a kernel
+that no longer exists does not boot. On hardware with no IPMI, mid-dist-upgrade,
+that is the single worst outcome this runbook is written to prevent.
+
+**`pve8to9` does not catch it.** It reported
+`PASS: running kernel '6.8.12-1-pve' is considered suitable for upgrade` — it
+validates the *running* kernel, not the GRUB default. Three nodes upgrading
+perfectly gave no hint the fourth was different. The only reason it surfaced was
+noticing that `uname -r` said `-1` where the other nodes said `-43`.
+
+**Check every node before Stage C:**
 
 ```bash
-ceph mgr fail discovery
+proxmox-boot-tool kernel list          # look for a "Pinned kernel" section
+ls /etc/default/grub.d/                # look for proxmox-kernel-pin.cfg
+grep -rhE '^GRUB_DEFAULT' /etc/default/grub /etc/default/grub.d/
 ```
 
-It promoted cerritos in **~2 seconds** with `HEALTH_OK` throughout, and
-discovery rejoined as a standby. Current state: **cerritos active, discovery +
-kelvin standby**. discovery can now be rebooted like any other node, and the
-cluster has lost a real SPOF that predated this upgrade.
+Verified 2026-09-07: **no pins on any of the four nodes.** excelsior's was
+removed with `proxmox-boot-tool kernel unpin` (which also clears
+`/etc/kernel/next-boot-pin` and `/etc/kernel/proxmox-boot-pin` and re-runs
+`update-grub`), then confirmed by rebooting onto 6.8.12-43.
 
-Stage B (Ceph Reef → Squid) should not begin until all four nodes are on
-8.4.21, so the Ceph version mismatch warnings resolve first.
+Vestigial leftovers still installed on excelsior, harmless but removable:
+`thunderbolt-tools 0.9.3-6` and `proxmox-headers-6.8.12-1-pve`. Confirmed with
+the operator that the Thunderbolt work was an old experiment — no TB hardware
+is present, no modules load, and dkms is not installed, so nothing was ever
+compiled against the pinned kernel.
+
+Otherwise unremarkable: dist-upgrade **rc=0 in 149 s**, reboots 45 s each,
+`pve8to9 --full` = **50 PASS / 1 WARN / 1 FAIL**, guests home, `noout` cleared,
+`HEALTH_OK`. excelsior runs neither mgr nor MDS, so no failover was needed.
+
+## Final state
+
+All four nodes identical: `pve-manager 8.4.21`, kernel `6.8.12-43-pve`, uplink
+pinned to `nic1`, no kernel pins. Ceph: **18 daemons, all on 18.2.8** (4 mon,
+3 mgr, 8 osd, 3 mds). 97 PGs active+clean, `HEALTH_OK`.
+
+`pve8to9 --full` on the last node reports **50 PASS / 1 WARN / 1 FAIL** — the
+version-mismatch warnings disappeared once the roll completed, and the only
+remaining failure is `Hyper-converged Ceph 18 Reef is to old for upgrade!`,
+which is precisely Stage B's cue.
+
+## Techniques worth reusing in Stage C
+
+- **Detect reboots by watching `/proc/sys/kernel/random/boot_id` change**, never
+  by SSH reachability — sshd survives several seconds into shutdown and a naive
+  poll will happily report pre-reboot state as success.
+- **Fail the mgr over deliberately** (`ceph mgr fail <node>`) before rebooting
+  whichever node holds it. ~2 s, and it beats letting shutdown force it.
+- **Verify NIC pinning three ways before rebooting**: the `interfaces.new` diff,
+  the `.link` file's `MACAddress`, and
+  `udevadm test-builtin net_setup_link /sys/class/net/<iface>`. The tool has no
+  `--dry-run`, but it writes to `interfaces.new` and leaves the live file intact
+  until a successful boot.
+- **Expect backfill after clearing `noout`** and wait for all-`active+clean`
+  before starting the next node. On an idle cluster
+  `ceph config set osd osd_max_backfills 4` roughly halves the wait; restore it
+  to `1` afterwards.
+- **Transient `mon` clock skew** after every node reboot clears itself in ~75 s.
+  Do not chase it.
