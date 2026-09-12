@@ -39,18 +39,91 @@ Stage B completed 2026-09-09 (see [`stageB-status-2026-09-09.md`](stageB-status-
 
 ## Things known going in that are not blockers
 
-- Existing CephFS kernel mounts still carry the old five-address `mon_host`
-  string (with the dead `.10`). The Stage C reboots remount with the corrected
-  four-address string — a side benefit, not a task.
+- ~~CephFS mounts still carry the old five-address `mon_host` string~~ —
+  **wrong, struck 2026-09-12.** All four nodes rebooted in Stage A *after* the
+  `mon_host` fix; excelsior's mount already showed four addresses before its
+  Stage C reboot. Self-corrected days ago.
 - `globus` (103, on discovery) has no PBS backup by prior decision. It
   live-migrates like everything else; this only matters if migration itself
   fails, which it has not once in 24 migrations so far.
+
+## excelsior — canary, done 2026-09-12 14:02 CDT
+
+| Step | Result |
+|---|---|
+| Evacuate | 104→cerritos 11 s, 105→discovery 15 s, 110→kelvin 9 s |
+| `apt -s dist-upgrade` | 686 up / 175 new / **61 removed** — every removal a `t64` soname transition with its replacement in the install list; nothing from PVE/Ceph/corosync/qemu/boot/network removed; ZFS replaced (2.4.4) not dropped |
+| dist-upgrade | **rc=0 in 248 s**, `dpkg --audit` clean |
+| Reboot | back in **65 s** on `7.0.14-16-pve`, `pve-manager` 9.2.18, Ceph 19.2.6, `pve-qemu-kvm` **11.0.3** |
+| NIC pinning under kernel 7.0 | **held** — `nic1`/`vmbr0` up on .13. First real test of the Stage A pinning; passed. |
+| Gate (`active+clean`) | passed in 8 s; no clock skew this time |
+| 10G traffic test | **9.40 Gbit/s sustained 22 s** (24 GiB, raw TCP via `nc`), 0 tx/rx errors, dmesg clean — ixgbe on 7.0.14-16 is fine |
+| Guests home | 58 / 90 / 72 ms downtime; all three agents answer on the QEMU-11 host |
+
+`noout` stays set for the rest of the stage.
+
+### Two failed units mid-upgrade — expected, clears on reboot
+
+After the dist-upgrade and **before** the reboot, `systemctl --failed` showed
+`chrony.service` (`Could not send notification to $NOTIFY_SOCKET`) and
+`user@0.service` (`Protocol driver not attached`, triggered by my own SSH login).
+`/proc/1/maps` showed PID 1 was *already* systemd 257 — the upgrade had done a
+`daemon-reexec` across a major version (252→257) on the still-running system.
+
+I got the diagnosis wrong twice before getting it right, which is worth
+recording so nobody repeats it on the other three nodes:
+
+1. "It's the notify path to PID 1 being broken post-reexec" — **no**: five
+   other `Type=notify` services (corosync, ssh, rpcbind, smartmontools,
+   pve-lxc-syscalld) started after the reexec and were fine.
+2. "It's chrony's seccomp filter vs new glibc on the old kernel" — **no**: the
+   test I ran was invalid (my `systemd-run` probe lacked the unit's
+   `RuntimeDirectory=chrony`, so it failed on privilege-drop regardless).
+
+What actually settled it: stop debugging a service inside reexec limbo. The
+system was otherwise coherent — `dpkg --audit` clean, `chronyd -v` linked,
+config parsed, ssh/corosync/ceph/lvm all working — and a 5-minute clock gap is
+harmless. **Reboot is both the fix and the test.** On the clean 7.0 boot both
+units were active and `--failed` was empty.
+
+**For kelvin/cerritos/discovery:** expect these two failures after the
+dist-upgrade. Verify the system is coherent (audit clean, ssh/corosync/ceph
+active, GRUB default on 7.0), then reboot. Don't chase chrony pre-reboot.
+
+### `lvm.conf` — how to take the maintainer version without an unfiltered window
+
+The wiki says "install maintainer version." Our PVE 8 file carried
+`global_filter=["r|/dev/zd.*|","r|/dev/rbd.*|"]` under a
+`# added by pve-manager to avoid scanning` marker; the pristine PVE 9 file has
+no filter at all. On a Ceph cluster that filter is what stops the host's LVM
+scanning every mapped RBD and activating guest VGs on the hypervisor.
+
+`pve-manager.postinst` (9.2.18) manages this itself — new default adds `nbd`:
+`["r|/dev/zd.*|","r|/dev/rbd.*|","r|/dev/nbd.*|"]` — **but skips when its
+marker is already present**, which is why our file was left on the old value
+even though the postinst ran. Naively copying the maintainer file leaves the
+host unfiltered until something re-runs that logic.
+
+Procedure used (no window): build `lvm.conf.new` = `lvm.conf.dpkg-dist` + the
+exact block the postinst's `cat >>` branch writes, sanity-check it with
+`LVM_SYSTEM_DIR=<tmp> lvmconfig`, then `mv` into place (atomic rename). Verify:
+
+```bash
+lvmconfig --typeconfig diff devices/global_filter   # 3-entry, with nbd
+lvmconfig --typeconfig full devices/scan_lvs        # scan_lvs=0
+lvmconfig --validate
+pvs --noheadings -o vg_name                          # only pve + ceph-<osd> VGs
+```
+
+Old file kept as `/etc/lvm/lvm.conf.pve8-<date>`. `/etc/issue.dpkg-dist` is
+simply deleted (wiki: keep ours — it's the PVE web-UI banner). No
+`sshd_config.dpkg-dist` or `grub` prompt was generated on this node.
 
 ## Node progress
 
 | Node | Evacuate | Sources | `-s` plan reviewed | dist-upgrade | Reboot → 7.0 | Verify + 10G traffic | Configs reviewed |
 |---|---|---|---|---|---|---|---|
-| excelsior | — | — | — | — | — | — | — |
+| excelsior | done | done | done | done | **done** | **done** | **done** |
 | kelvin | — | — | — | — | — | — | — |
 | cerritos | — | — | — | — | — | — | — |
 | discovery | — | — | — | — | — | — | — |
