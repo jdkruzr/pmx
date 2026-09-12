@@ -335,10 +335,16 @@ ceph -s        # HEALTH_OK, all daemons 19.2.x
 
 ## Stage C — PVE 8 → 9.2 (Bookworm → Trixie, kernel 7.0), rolling per node
 
-Do **one node at a time**; never two at once. Suggested order: a low-criticality
-node first to de-risk the procedure, saving the **active-MGR node (discovery)**
-and **active-MDS node (kelvin)** for last (their services fail over to standbys
-automatically). `ceph osd set noout` for the whole stage; unset at the end.
+Do **one node at a time**; never two at once. Order (placement as of
+2026-09-12): **excelsior → kelvin → cerritos → discovery**. excelsior first
+because it carries the smallest Ceph footprint (mon + 2 OSD; no mgr, no MDS),
+so nothing has to fail over for the canary. cerritos holds the **active MDS**
+and discovery the **active MGR** — fail each over deliberately before touching
+its node (`ceph mgr fail discovery`; for the MDS, restart the standbys' target
+is unnecessary — `ceph mds fail cerritos` promotes a standby). `ceph osd set
+noout` for the whole stage; unset at the end. **Gate between nodes on
+`ceph pg stat` showing only `active+clean` (plus scrubbing) — not merely "OSDs
+up"** (see the Stage B post-mortem).
 
 Per node, **inside `tmux`/`screen`**:
 
@@ -353,13 +359,13 @@ Per node, **inside `tmux`/`screen`**:
    Types: deb
    URIs: http://ftp.us.debian.org/debian
    Suites: trixie trixie-updates
-   Components: main contrib
+   Components: main contrib non-free-firmware
    Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 
    Types: deb
    URIs: http://security.debian.org/debian-security
    Suites: trixie-security
-   Components: main contrib
+   Components: main contrib non-free-firmware
    Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
    SRC
 
@@ -383,11 +389,27 @@ Per node, **inside `tmux`/`screen`**:
    : > /etc/apt/sources.list
    rm -f /etc/apt/sources.list.d/pve-enterprise.list /etc/apt/sources.list.d/ceph.list
    ```
-   The current sources have no `non-free-firmware` and both NICs (`ixgbe`,
-   `r8169`) work; don't add it.
-3. `apt update && apt dist-upgrade` — accept maintainer configs per wiki
-   guidance (`/etc/issue`→No, `lvm.conf`→Yes, `sshd_config`→Yes if only
-   deprecated-option diffs, `grub`→No unless customized).
+   **`non-free-firmware` must be present** (corrected 2026-09-12). An earlier
+   revision of this step said to omit it; that predates Stage A, which added the
+   component and installed `amd64-microcode` on every node at `pve8to9`'s
+   request. Dropping the component now would strand that package with no
+   source of updates. The NICs still don't need it — the CPU microcode does.
+3. `apt update && apt dist-upgrade`. **First** run `apt -s dist-upgrade` and
+   read the plan — the list of packages *removed* is the part that matters.
+
+   Config prompts, wiki guidance: `/etc/issue`→No, `lvm.conf`→Yes,
+   `sshd_config`→Yes if only deprecated-option diffs, `grub`→No unless
+   customized. Approach used here (2026-09-12): run non-interactively with
+   `--force-confold --force-confdef` so the running system's configs are
+   never replaced blind, then **after** the upgrade diff every `*.dpkg-dist`
+   left under `/etc` and apply the maintainer versions of `lvm.conf` and
+   `sshd_config` deliberately, with the diff in front of you:
+   ```bash
+   find /etc -name '*.dpkg-dist' -o -name '*.dpkg-new' | while read f; do
+     echo "=== $f"; diff -u "${f%.dpkg-*}" "$f"; done
+   ```
+   The interactive-in-tmux route is equally valid when someone is at the
+   console; this one just leaves a reviewable trail.
 4. `reboot` into kernel **7.0.14-x** (the PVE 9.2 default). Reboot even if
    `apt` didn't complain.
 5. Verify: `pveversion` → 9.2.x; `uname -r` → `7.0.x-pve`; `ip -br link` shows
