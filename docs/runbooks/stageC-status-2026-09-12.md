@@ -4,6 +4,9 @@ Companion to [`pve9-ceph-tentacle-upgrade.md`](pve9-ceph-tentacle-upgrade.md).
 Stage B completed 2026-09-09 (see [`stageB-status-2026-09-09.md`](stageB-status-2026-09-09.md)).
 
 - **Pre-flight:** 2026-09-12 13:30–13:35 CDT — passed, see below
+- **COMPLETED: 2026-09-12 15:01 CDT.** All four nodes on `pve-manager` 9.2.18 /
+  kernel 7.0.14-16-pve, all 18 Ceph daemons on 19.2.6, `noout` cleared, all 13
+  guests home. Two follow-ups open — see the end of this file.
 - **Operator location:** on-site (was remote for Stages 0–B). JetKVM in hand.
 
 ## Pre-flight (2026-09-12)
@@ -210,6 +213,84 @@ point of having it.
 
 Ceph is now three-quarters migrated: 3 mon / 6 osd / 2 mgr / 2 mds on 19.2.6.
 
+## discovery — done 2026-09-12 15:01 CDT — Stage C closed
+
+Last node, holding the active mgr. `ceph mgr fail discovery` promoted kelvin in
+2 s; discovery rejoined as a standby in 14 s. (kelvin now holds both active
+mgr and active MDS — fine, it's on 19.2.6 and going nowhere.)
+
+| Step | Result |
+|---|---|
+| MGR failover | clean; active → kelvin |
+| Evacuate | 100→cerritos 11 s, 103→kelvin 13 s |
+| Dry run | 639 up / 155 new / 61 removed — all explained |
+| dist-upgrade | **rc=0 in 243 s**, audit clean; `chrony` only |
+| `lvm.conf` | same procedure; verified |
+| Reboot | back in **40 s** on 7.0.14-16; chrony active; zero failed units |
+| CephFS | mounted, read+write OK |
+| Gate | passed in 24 s; no skew |
+| 10G test | **9.39 Gbit/s / 22 s**, 0 errors |
+| `noout` | **cleared** — all four done |
+| Guests home | 92 / 85 ms downtime |
+
+### Final cluster state
+
+```
+discovery   9.2.18   7.0.14-16-pve   ceph 19.2.6   uplink=nic1   guests=2
+cerritos    9.2.18   7.0.14-16-pve   ceph 19.2.6   uplink=nic1   guests=3
+excelsior   9.2.18   7.0.14-16-pve   ceph 19.2.6   uplink=nic1   guests=3
+kelvin      9.2.18   7.0.14-16-pve   ceph 19.2.6   uplink=nic1   guests=3
+overall: 18 daemons on 19.2.6 squid   min_mon_release 19   require_osd_release squid
+97 PGs active+clean, 4/4 mons in quorum, 8/8 OSDs up/in
+```
+
+Per-node timings were remarkably uniform: dist-upgrade 243–265 s, reboot 40–65 s,
+gate 8–24 s, 10G test 9.39–9.40 Gbit/s. Twelve live migrations during the stage,
+downtime 39–105 ms, zero failures.
+
+## Open items surfaced at close-out
+
+### 1. `HEALTH_ERR` — CephX "insecure key types" (six checks)
+
+Fired at **14:57:58, the instant discovery's mon rejoined** — i.e. the moment all
+four mons were on 19.2.6. It is the runbook's Stage D+ item (CVE-2025-30156,
+AES-128-CBC → `aes256k`), one stage early. All 22 CephX entities use `aes`.
+
+```
+[WRN] AUTH_INSECURE_CLIENT_KEY_TYPE           8 client entities
+[WRN] AUTH_INSECURE_KEYS_ALLOWED
+[WRN] AUTH_INSECURE_KEYS_CREATABLE
+[WRN] AUTH_INSECURE_ROTATING_SERVICE_KEY_TYPE  mon/mds/osd/mgr
+[ERR] AUTH_INSECURE_SERVICE_KEY_TYPE           14 service entities (osd.0-7, mds.*, mgr.*)
+[ERR] AUTH_INSECURE_SERVICE_TICKETS
+```
+
+**Policy checks, not a data problem** — 97 PGs clean, 8/8 OSDs up. But `ERR` is
+`ERR` for anything watching cluster health.
+
+Two corrections to the runbook's Stage D+ text, from observation:
+
+- It says "expect the six new health *warnings*." Six is right; **two are `ERR`**.
+- It gates rotation on "≥ 20.2.4" while itself noting **19.2.6 carries the fix**.
+  Node-side prerequisites (19.2.6 everywhere, kernel 7.0 everywhere) are met
+  *now*. The guest-side prerequisite (guest kernels with `aes256k`) is not, which
+  is why the rotation is split node-first / guests-later.
+
+Decision pending: mute the six checks with a TTL until Stage D+ runs, or leave
+them visible.
+
+### 2. globus (103) — guest agent has never responded
+
+Not a Stage C casualty. `agent: 1` is set in its config, but globus was
+classified "rebuildable" in Stage 0 and skipped the agent verification that
+covered 100/101/105/112/113 — so there is **no record of its agent ever
+answering**. After the migration home it is `running`, the guest **answers ping
+at 192.168.9.50**, and the machine type (`pc-i440fx-9.0`) was preserved. Most
+likely the same state 112/113 were in before Stage 0: agent enabled on the
+host, `qemu-guest-agent` not installed in the guest. Fix is the Stage 0 recipe
+(install in-guest, then `qm reboot` — a reboot from *inside* the guest is not
+enough).
+
 ## Node progress
 
 | Node | Evacuate | Sources | `-s` plan reviewed | dist-upgrade | Reboot → 7.0 | Verify + 10G traffic | Configs reviewed |
@@ -217,4 +298,4 @@ Ceph is now three-quarters migrated: 3 mon / 6 osd / 2 mgr / 2 mds on 19.2.6.
 | excelsior | done | done | done | done | **done** | **done** | **done** |
 | kelvin | done | done | done | done | **done** | **done** | **done** |
 | cerritos | done | done | done | done | **done** | **done** | **done** |
-| discovery | — | — | — | — | — | — | — |
+| discovery | done | done | done | done | **done** | **done** | **done** |
