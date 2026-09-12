@@ -160,11 +160,61 @@ The NIC pinning is keyed on MAC address, not interface name, so these
 differences are exactly what it absorbs. Every node's uplink is `nic1` and
 `vmbr0` bridges it; nothing else needs to match.
 
+## cerritos — done 2026-09-12 14:33 CDT
+
+First node with an active role to hand off. `ceph mds fail cerritos` promoted
+**kelvin** in seconds; all 13 CephFS client sessions came back `open` and every
+node's mount stayed responsive. cerritos rejoined as a standby after its reboot.
+
+| Step | Result |
+|---|---|
+| MDS failover | clean; active → kelvin, 13/13 sessions `open` |
+| Evacuate | 101→kelvin 7 s, 112→discovery 11 s, 113→kelvin 8 s; stopped templates 9000/9001 stayed |
+| Dry run | **717 up / 187 new / 70 removed** — nine more removals than excelsior/kelvin |
+| dist-upgrade | **rc=0 in 265 s**, audit clean; `chrony` the only failed unit, as predicted |
+| `lvm.conf` | same procedure; verified |
+| Reboot | back in **40 s** on 7.0.14-16; chrony active; zero failed units |
+| CephFS | checked *after* `pvesm status`: mounted, read+write OK |
+| Gate | passed in 24 s; no skew |
+| 10G test | **9.40 Gbit/s / 22 s**, 0 errors, dmesg clean |
+| Guests home | 63 / 105 / 39 ms downtime, all agents answer |
+
+### The nine extra removals
+
+All `t64` soname transitions with replacements in the install list:
+`libguestfs0`, `libtsk19`, `libafflib0v5`, `libntfs-3g89`, `libhfsp0`,
+`libldm-1.0-0`, `libcups2`, `libnetpbm11`, `libxt6`. Cause: cerritos is the
+pmx target node and carries `guestfish`/`guestmount`/`libguestfs-tools` for
+template seeding, which pull in forensic/filesystem libraries the other nodes
+never had. Benign — but it proved the "identical to excelsior" gate was wrong,
+because each node's package set differs.
+
+**Gate 1 is now:** *every removal must either be on excelsior's reviewed list
+or have a `t64` replacement in the install list.* The script prints each
+mapping (`libafflib0v5 -> libafflib0t64`) so the audit trail is explicit.
+
+### Two script bugs, both caught by the gate refusing rather than proceeding
+
+1. **`ceph fs status` wraps "active" in ANSI colour codes.** My `awk '/ active /'`
+   never matched, so the MDS-failover verifier timed out and the first
+   precondition poll ran three minutes with an empty MDS name and then refused
+   to launch. The failover itself had been fine. **Use `ceph mds stat`** — plain
+   text: `cephfs:1 {0=kelvin=up:active} 2 up:standby`.
+2. **Debian's `v<N>` ABI-tag suffix is *replaced* by `t64`, not appended**
+   (`libafflib0v5` → `libafflib0t64`). The first normalizer missed it and the
+   gate refused on the one package I had already verified by hand. Fixed to
+   strip a trailing `v[0-9]+` before trying `t64`.
+
+Both times the gate's failure mode was *refuse and show me*, which is the whole
+point of having it.
+
+Ceph is now three-quarters migrated: 3 mon / 6 osd / 2 mgr / 2 mds on 19.2.6.
+
 ## Node progress
 
 | Node | Evacuate | Sources | `-s` plan reviewed | dist-upgrade | Reboot → 7.0 | Verify + 10G traffic | Configs reviewed |
 |---|---|---|---|---|---|---|---|
 | excelsior | done | done | done | done | **done** | **done** | **done** |
 | kelvin | done | done | done | done | **done** | **done** | **done** |
-| cerritos | — | — | — | — | — | — | — |
+| cerritos | done | done | done | done | **done** | **done** | **done** |
 | discovery | — | — | — | — | — | — | — |
