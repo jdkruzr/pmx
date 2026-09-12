@@ -435,6 +435,11 @@ apt update && apt full-upgrade
 Check `apt policy ceph` first: if 20.2.4-pve4 or later has reached
 `no-subscription`, you get the August 2026 CVE fixes for free. If it's still
 `test`-only, proceed with 20.2.2 — that's the accepted decision.
+**(2026-09-12: 20.2.4-pve4 was in `no-subscription`; that's what was installed.)**
+
+Expect PVE 9's `pve-manager` postinst to have recreated
+`/etc/apt/sources.list.d/pve-enterprise.sources` after Stage C — set
+`Enabled: false` in it rather than deleting it, or every `apt update` logs 401s.
 
 `ceph osd set noout`, then same restart order as Stage B (MON → MGR → OSD
 node-by-node → MDS dance). Confirm `min_mon_release 20 (tentacle)`. Finalize:
