@@ -80,6 +80,10 @@ def run(name: str, yes: bool, dry_run: bool = False) -> int:
         "guest_vmid": vmid,
         "guest_kind": kind,
         "guest_ip": state.ip if state else None,
+        # Only a pmx-tracked guest with CephFS mounts owns a `client.<name>` CephX
+        # identity; an untracked guest passes "" so destroy.yml never runs
+        # `ceph auth rm` against an entity pmx did not mint.
+        "cephx_entity": state.cephx_entity if state else "",
         "domain_join": maybe_joined and bool(cfg.dc_ssh_host),
         "ad_domain": cfg.ad_domain,
         "dc_ssh_host": cfg.dc_ssh_host,
@@ -112,6 +116,8 @@ def _print_preflight(
     status = _cluster_status(cfg.proxmox_ssh_host, node, vmid, kind)
     click.echo(f"{name}  vmid {vmid}  {kind}  node {node}  {status}")
     click.echo(f"  state log : {state_status}")
+    if state is not None and state.cephx_entity:
+        click.echo(f"  cephx     : will remove {state.cephx_entity}")
 
     if not maybe_joined:
         click.echo("  DNS/AD    : not domain-joined — no records to remove")

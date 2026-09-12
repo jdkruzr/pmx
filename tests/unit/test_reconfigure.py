@@ -77,6 +77,8 @@ def test_reconfigure_state_found_builds_correct_extra_vars() -> None:
         cfg.default_lxc_storage = "cephfs"
         cfg.default_bridge = "vmbr0"
         cfg.proxmox_api_host = "192.168.9.12"
+        cfg.ceph_mons = ["192.168.9.11"]
+        cfg.cephx_key_type = "aes"
         mock_load.return_value = cfg
 
         # State found
@@ -131,6 +133,11 @@ def test_reconfigure_state_found_builds_correct_extra_vars() -> None:
         assert extra_vars["default_lxc_storage"] == "cephfs"
         assert extra_vars["default_bridge"] == "vmbr0"
         assert extra_vars["proxmox_api_host"] == "192.168.9.12"
+        # Ceph: mons + the per-guest key type; no workstation secret/conf paths.
+        assert extra_vars["ceph_mons"] == ["192.168.9.11"]
+        assert extra_vars["cephx_key_type"] == "aes"
+        assert "ceph_secret_path" not in extra_vars
+        assert "ceph_conf_path" not in extra_vars
 
         assert result == 0
 

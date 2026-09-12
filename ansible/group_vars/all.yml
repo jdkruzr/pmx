@@ -7,11 +7,13 @@ default_storage: bwrx
 default_lxc_storage: cephfs
 default_bridge: vmbr0
 
-# Paths on the workstation (filled in by the CLI from ~/.config/pmx/config.yml)
-ceph_conf_path: /etc/ceph/ceph.conf
-ceph_secret_path: /etc/ceph/cephfs.secret
+# Ceph. The workstation is not a Ceph client: each CephFS guest gets its own
+# `client.<guest_name>` identity minted on the node (see roles/mount_cephfs).
 ceph_mons:
   - 192.168.9.11
   - 192.168.9.12
   - 192.168.9.13
   - 192.168.9.14
+cephfs_fs_name: cephfs
+# aes until every CephFS guest runs a kernel that speaks aes256k (7.0+).
+cephx_key_type: aes

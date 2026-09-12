@@ -139,3 +139,19 @@ def test_state_log_roundtrip_with_fixture() -> None:
     # A record with no destroyed_at (fixture predates the field) reads as live.
     assert rec.destroyed_at == ""
     assert rec.is_tombstone is False
+    # Likewise cephx_entity: the fixture predates it and must still load.
+    assert rec.cephx_entity == ""
+
+
+def test_cephx_entity_roundtrip(tmp_path: Path) -> None:
+    """cephx_entity is persisted and read back; it defaults to '' for guests
+    without CephFS mounts."""
+    log = tmp_path / "guests.jsonl"
+    append(log, _rec("fsguest", 101, cephfs_mounts=["supernote:/mnt/sn"],
+                     cephx_entity="client.fsguest"))
+    append(log, _rec("plain", 102))
+
+    assert find_by_name(log, "fsguest").cephx_entity == "client.fsguest"
+    assert find_by_name(log, "plain").cephx_entity == ""
+    raw = [json.loads(line) for line in log.read_text().splitlines()]
+    assert raw[0]["cephx_entity"] == "client.fsguest"

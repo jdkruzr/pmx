@@ -14,6 +14,7 @@
       'extra_packages': extra_packages | default([]),
       'static_ip': static_ip | default(None),
       'static_gw': static_gw | default(None),
+      'cephx_entity': ('client.' ~ guest_name) if (cephfs_mounts | default([]) | length > 0) else '',
       'created_at': ansible_date_time.iso8601,
     } }}"
 

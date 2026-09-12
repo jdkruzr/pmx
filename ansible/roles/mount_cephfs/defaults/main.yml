@@ -1,10 +1,33 @@
 ---
 # Default values for mount_cephfs role.
-ceph_conf_path: /etc/ceph/ceph.conf
-ceph_secret_path: /etc/ceph/cephfs.secret
+#
+# Every guest that mounts CephFS gets its own CephX identity, `client.<guest_name>`,
+# minted on the Proxmox node with `ceph fs authorize` and scoped to exactly the
+# subpaths it asked for. The workstation is NOT a Ceph client and holds no secret.
 ceph_mons:
   - 192.168.9.11
   - 192.168.9.12
   - 192.168.9.13
   - 192.168.9.14
-cephfs_mount_opts: "name=admin,secretfile=/etc/ceph/cephfs.secret,noatime,_netdev"
+cephfs_fs_name: cephfs
+
+# Key type for the minted identity. Guest kernels up to 6.8 only speak `aes`;
+# an `aes256k` key is rejected by their mount.ceph. Flip to aes256k once every
+# CephFS guest runs a 7.0+ kernel (see docs/runbooks/stageE-status-2026-09-12.md).
+cephx_key_type: aes
+
+# VM path: kernel mount inside the guest with the guest's own secret.
+# recover_session=clean lets the kernel client re-establish a session cleanly if
+# the MDS ever blocklists it instead of leaving the mount wedged.
+cephfs_secret_path: "/etc/ceph/{{ guest_name }}.secret"
+cephfs_mount_opts: >-
+  name={{ guest_name }},secretfile={{ cephfs_secret_path }},fs={{ cephfs_fs_name }},noatime,_netdev,recover_session=clean
+
+# LXC path: unprivileged containers can't run the kernel client, so the node
+# mounts the subtree (per guest, so no two containers share a key) and binds it
+# in. The secret lives on pmxcfs, which is why the mount must wait for
+# pve-cluster.service at node boot.
+cephfs_lxc_secret_path: "/etc/pve/priv/ceph/pmx-{{ guest_name }}.secret"
+cephfs_lxc_mount_root: "/mnt/pmx-passthrough/{{ guest_name }}"
+cephfs_lxc_mount_opts: >-
+  name={{ guest_name }},secretfile={{ cephfs_lxc_secret_path }},fs={{ cephfs_fs_name }},noatime,_netdev,recover_session=clean,x-systemd.requires=pve-cluster.service

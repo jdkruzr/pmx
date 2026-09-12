@@ -1,6 +1,6 @@
 # Ansible Layer
 
-Last verified: 2026-04-18
+Last verified: 2026-09-12
 
 ## Purpose
 
@@ -13,7 +13,7 @@ are single-purpose and composable; playbooks are thin orchestrators.
 - **Exposes:** Five playbooks runnable via `run_playbook()` from `pmx/`:
   - `provision.yml` — create + configure (new guests)
   - `_configure.yml` — configure only (imported by provision, reused by reconfigure)
-  - `destroy.yml` — AD cleanup + `qm/pct destroy --purge`
+  - `destroy.yml` — AD cleanup + `qm/pct destroy --purge` + CephX identity teardown
   - `reconfigure.yml` — re-run `_configure.yml` against an existing guest
   - `seed.yml` — build base templates on the cluster
 - **Guarantees:**
@@ -29,15 +29,17 @@ are single-purpose and composable; playbooks are thin orchestrators.
 - **Expects:** Extra-vars from `pmx.translate.extra_vars_from()` plus
   cluster/AD config (`target_node`, `default_storage`, `default_lxc_storage`,
   `default_bridge`, `ad_domain`, `ad_realm`, `ad_join_user`,
-  `proxmox_api_host`, `state_log_path`). Full list in `provision.yml` header
-  and `docs/extending-post-create.md`.
+  `proxmox_api_host`, `ceph_mons`, `cephx_key_type`, `dc_ssh_host`,
+  `state_log_path`; `destroy.yml` additionally `cephx_entity`). Full list in
+  `provision.yml` header and `docs/extending-post-create.md`.
 
 ## Dependencies
 
 - **Uses:**
   - Collections pinned in `requirements.yml` (includes `ansible.utils` for
     `ipaddr`/`ipmath`).
-  - Custom filter `pmx_parse_cephfs` from `filter_plugins/pmx_filters.py`.
+  - Custom filters `pmx_parse_cephfs` and `pmx_cephx_caps` from
+    `filter_plugins/pmx_filters.py`.
   - SSH access to Proxmox nodes (key auth) and to guests (cloud-init injected
     key for VMs; root password or key for LXC).
 - **Used by:** `pmx/ansible_runner.py` only.
@@ -54,7 +56,7 @@ are single-purpose and composable; playbooks are thin orchestrators.
 | `common` | every configure | guest | `apt`/`dnf` bootstrap; includes `ubuntu.yml` or `rocky.yml` |
 | `ad_join_common` | via `ad_join_*` | guest | Shared sssd.conf + sudoers drop-in templates |
 | `ad_join_ubuntu` / `ad_join_rocky` | `domain_join=true` | guest | `realm join` with OS-specific package set |
-| `mount_cephfs` | `cephfs_mounts` non-empty | guest | VM path: kernel mount via `/etc/fstab`; LXC path: bind-mount from host |
+| `mount_cephfs` | `cephfs_mounts` non-empty | guest (+ node) | Mints `client.<guest_name>` on the node via `ceph fs authorize` (scoped to the requested subpaths, reconciled with `ceph auth caps` on re-run). VM path: kernel mount via `/etc/fstab` with the guest's own 0600 secret; LXC path: per-guest host mount under `/mnt/pmx-passthrough/<name>/` bound in via `mp<N>:` |
 | `attach_rbd_disk` | `rbd_disk` non-null, VM only | Proxmox node | `qm set` an additional RBD volume |
 | `extra_packages` | `extra_packages` non-empty | guest | Install operator-supplied package list |
 | `post_create_hook` | always last | guest | Append to `state/guests.jsonl`; extension point |
@@ -73,7 +75,12 @@ are single-purpose and composable; playbooks are thin orchestrators.
   then include `ad_join_common/apply.yml` for config.
 - **LXC CephFS via bind-mount:** Unprivileged LXCs can't run the kernel
   CephFS client; the host mounts CephFS and bind-mounts the subtree into
-  the container.
+  the container. One host mount per guest (never shared), with the guest's
+  own secret on pmxcfs (`/etc/pve/priv/ceph/pmx-<name>.secret`).
+- **The workstation is not a Ceph client (2026-09-12):** every CephFS guest
+  gets a least-privilege `client.<name>` minted on the node and removed on
+  destroy. `client.admin` never leaves the nodes. Rationale and the migration
+  of the pre-existing hand-built clients: `docs/runbooks/stageE-status-2026-09-12.md`.
 - **Half-built detection (AC6.3):** `create_vm` and `create_lxc` check
   whether the VMID already exists and skip creation if so, letting the
   configure play retry against an existing guest.
@@ -101,7 +108,16 @@ are single-purpose and composable; playbooks are thin orchestrators.
 - `add_host` for LXC must set `ansible_become: false` explicitly or it
   inherits the configure play's default and fails.
 - `destroy.yml`'s adcli cleanup uses `failed_when: false` — a missing AD
-  computer object is not fatal.
+  computer object is not fatal. Its CephX teardown is gated on a non-empty
+  `cephx_entity` (pmx passes `""` for untracked guests) and never `rm -rf`s a
+  passthrough directory that still has something mounted beneath it.
+- `mount_cephfs` must pass `--key_type aes` while any CephFS guest runs a
+  ≤6.8 kernel: the monmap prefers aes256k and an aes256k secret is rejected by
+  those guests' `mount.ceph`. A kernel CephFS mount authenticates only at
+  mount time, so a changed secret triggers a real unmount, not a remount.
+- Host-side passthrough mounts carry `x-systemd.requires=pve-cluster.service`
+  because their secret lives on pmxcfs, which is not up when `_netdev` mounts
+  run at node boot.
 - Seed playbook uses `pveam available | grep` substring match for Rocky
   LXC templates because exact names drift across Proxmox minor versions.
 
@@ -110,5 +126,6 @@ are single-purpose and composable; playbooks are thin orchestrators.
 - `playbooks/provision.yml` — extra-vars header documents the contract
 - `playbooks/_configure.yml` — configure-phase task order
 - `group_vars/all.yml` — shared defaults
-- `filter_plugins/pmx_filters.py` — `pmx_parse_cephfs` filter
+- `filter_plugins/pmx_filters.py` — `pmx_parse_cephfs` and `pmx_cephx_caps` filters
+- `roles/mount_cephfs/tasks/cephx.yml` — the mint/reconcile/fetch-secret sequence
 - `requirements.yml` — collection pins (must include `ansible.utils`)

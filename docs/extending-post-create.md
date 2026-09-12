@@ -24,6 +24,7 @@ are set:
 | `extra_packages`      | list[str]        | Operator-supplied packages                        |
 | `static_ip`           | str \| null      | Static IP CIDR, or null for DHCP                  |
 | `static_gw`           | str \| null      | Explicit gateway, or null for inferred .1         |
+| `cephx_entity`        | str              | `client.<name>` when `cephfs_mounts` is non-empty, else `""` |
 | `ad_domain`           | str              | e.g. "broken.wrx"                                 |
 | `ad_realm`            | str              | e.g. "BROKEN.WRX"                                 |
 | `state_log_path`      | str              | Absolute path to `state/guests.jsonl`             |

@@ -1,20 +1,11 @@
 ---
 # VM-native CephFS mount path.
-# Installs ceph-common, copies config and secret, creates fstab entries, mounts.
+# Mints client.<guest_name> on the node, installs ceph-common in the guest,
+# writes ONLY that guest's secret (0600), creates fstab entries, mounts, and
+# asserts the live mount authenticates as the guest's own identity.
 
-- name: Fail early if workstation-side cephfs.secret is missing
-  ansible.builtin.stat:
-    path: "{{ ceph_secret_path }}"
-  delegate_to: localhost
-  become: false
-  register: workstation_secret
-
-- name: Fail loudly if missing
-  ansible.builtin.fail:
-    msg: >-
-      pmx requires {{ ceph_secret_path }} on the workstation to copy into VMs.
-      Ensure the workstation is already a Ceph client before requesting --cephfs.
-  when: not workstation_secret.stat.exists
+- name: Mint or reconcile the guest's CephX identity
+  ansible.builtin.include_tasks: cephx.yml
 
 - name: Install ceph-common (Ubuntu)
   ansible.builtin.apt:
@@ -25,8 +16,8 @@
 - name: Enable Ceph repo on Rocky
   ansible.builtin.yum_repository:
     name: ceph
-    description: Ceph Reef
-    baseurl: https://download.ceph.com/rpm-reef/el9/$basearch
+    description: Ceph Tentacle
+    baseurl: https://download.ceph.com/rpm-tentacle/el9/$basearch
     gpgcheck: true
     gpgkey: https://download.ceph.com/keys/release.asc
     enabled: true
@@ -44,21 +35,36 @@
     state: directory
     mode: "0755"
 
-- name: Copy ceph.conf from workstation
-  ansible.builtin.copy:
-    src: "{{ ceph_conf_path }}"
-    dest: /etc/ceph/ceph.conf
-    owner: root
-    group: root
-    mode: "0644"
+# mount.ceph needs neither a ceph.conf nor a keyring when the mons are named in
+# the source; the admin keyring in particular must never live on a guest.
+- name: Remove legacy admin-key artefacts
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/ceph/ceph.conf
+    - /etc/ceph/cephfs.secret
+    - /etc/ceph/ceph.client.admin.keyring
 
-- name: Copy cephfs.secret from workstation (tightened to 0600)
+- name: Install the guest's own CephX secret (0600)
   ansible.builtin.copy:
-    src: "{{ ceph_secret_path }}"
-    dest: /etc/ceph/cephfs.secret
+    content: "{{ cephx_secret }}"
+    dest: "{{ cephfs_secret_path }}"
     owner: root
     group: root
     mode: "0600"
+  no_log: true
+  register: cephx_secret_file
+
+# A kernel CephFS mount authenticates once, at mount time; `mount -o remount`
+# never re-authenticates. A changed secret (first run, rotation) therefore needs
+# a real unmount so the next mount starts a fresh session with the new key.
+- name: Unmount stale sessions after a secret change
+  ansible.posix.mount:
+    path: "{{ item.dest }}"
+    state: unmounted
+  loop: "{{ cephfs_specs }}"
+  when: cephx_secret_file.changed
 
 - name: Ensure mount directories exist
   ansible.builtin.file:
@@ -75,3 +81,12 @@
     opts: "{{ cephfs_mount_opts }}"
     state: mounted
   loop: "{{ cephfs_specs }}"
+
+- name: Assert each mount authenticates as {{ cephx_entity }}
+  ansible.builtin.shell: |
+    set -o pipefail
+    findmnt -rn -t ceph -o OPTIONS {{ item.dest | quote }} | tr ',' '\n' | grep -qx name={{ guest_name | quote }}
+  args:
+    executable: /bin/bash
+  loop: "{{ cephfs_specs }}"
+  changed_when: false

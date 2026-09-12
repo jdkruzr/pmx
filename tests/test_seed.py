@@ -26,8 +26,6 @@ class TestSeedRun:
             ad_domain="test.local",
             ad_realm="TEST.LOCAL",
             ad_join_user="testuser",
-            ceph_conf_path="/etc/ceph/ceph.conf",
-            ceph_secret_path="/etc/ceph/cephfs.secret",
             ceph_mons=["192.168.1.1"],
             state_log_path="state/guests.jsonl",
         )
@@ -62,8 +60,6 @@ class TestSeedRun:
             ad_domain="test.local",
             ad_realm="TEST.LOCAL",
             ad_join_user="testuser",
-            ceph_conf_path="/etc/ceph/ceph.conf",
-            ceph_secret_path="/etc/ceph/cephfs.secret",
             ceph_mons=["192.168.1.1"],
             state_log_path="state/guests.jsonl",
         )
@@ -89,8 +85,6 @@ class TestSeedRun:
             ad_domain="test.local",
             ad_realm="TEST.LOCAL",
             ad_join_user="testuser",
-            ceph_conf_path="/etc/ceph/ceph.conf",
-            ceph_secret_path="/etc/ceph/cephfs.secret",
             ceph_mons=["192.168.1.1"],
             state_log_path="state/guests.jsonl",
         )

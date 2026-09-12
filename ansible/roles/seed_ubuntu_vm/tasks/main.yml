@@ -59,7 +59,7 @@
 - name: Attach disk, cloud-init drive, serial console
   ansible.builtin.command: "{{ item }}"
   loop:
-    - "qm set {{ ubuntu_template_vmid }} --scsihw virtio-scsi-pci --scsi0 {{ default_storage }}:vm-{{ ubuntu_template_vmid }}-disk-0"
+    - "qm set {{ ubuntu_template_vmid }} --scsihw virtio-scsi-pci --scsi0 {{ default_storage }}:vm-{{ ubuntu_template_vmid }}-disk-0,discard=on"
     - "qm set {{ ubuntu_template_vmid }} --ide2 {{ default_storage }}:cloudinit"
     - "qm set {{ ubuntu_template_vmid }} --boot c --bootdisk scsi0"
     - "qm set {{ ubuntu_template_vmid }} --serial0 socket --vga serial0"

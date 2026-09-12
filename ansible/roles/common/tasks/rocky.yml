@@ -20,3 +20,12 @@
     state: started
     enabled: true
   when: guest_kind == "vm"
+
+# Disks are attached with discard=on; the periodic fstrim hands freed blocks
+# back to RBD so images stop growing monotonically.
+- name: Enable periodic fstrim
+  ansible.builtin.systemd:
+    name: fstrim.timer
+    state: started
+    enabled: true
+  when: guest_kind == "vm"

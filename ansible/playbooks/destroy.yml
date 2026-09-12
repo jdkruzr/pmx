@@ -15,6 +15,11 @@
 #
 # The task is gated on `domain_join`, which pmx sets false when dc_ssh_host is
 # unset, so this whole play no-ops for non-joined guests or unconfigured DCs.
+#
+#   3. CephX teardown: a guest with CephFS mounts owns `client.<name>`; pmx
+#      passes it as `cephx_entity` (empty for untracked guests, so a hand-made
+#      guest never triggers `ceph auth rm`). For LXCs the node also drops the
+#      per-guest passthrough mounts, fstab lines, directory, and secret.
 
 - name: DC-side AD + DNS cleanup (if domain-joined)
   hosts: localhost
@@ -75,3 +80,48 @@
       ansible.builtin.command: "pct destroy {{ guest_vmid }} --purge"
       when: guest_kind == 'lxc'
       changed_when: true
+
+    - name: Tear down CephX identity and host-side CephFS passthrough
+      when: cephx_entity | default('') | length > 0
+      block:
+        - name: Find host-side passthrough mounts for this container
+          ansible.builtin.shell: >-
+            findmnt -rn -t ceph -o TARGET | grep '^/mnt/pmx-passthrough/{{ guest_name }}/' || true
+          register: lxc_ceph_mounts
+          changed_when: false
+          when: guest_kind == 'lxc'
+
+        - name: Unmount passthrough mounts and drop their fstab lines
+          ansible.posix.mount:
+            path: "{{ item }}"
+            state: absent
+          loop: "{{ lxc_ceph_mounts.stdout_lines | default([]) }}"
+          when: guest_kind == 'lxc'
+
+        - name: Drop any fstab lines left for this guest's passthrough root
+          ansible.builtin.lineinfile:
+            path: /etc/fstab
+            regexp: '^\S+\s+/mnt/pmx-passthrough/{{ guest_name }}/'
+            state: absent
+          when: guest_kind == 'lxc'
+
+        - name: Refuse to remove a directory that still has something mounted beneath it
+          ansible.builtin.shell: >-
+            ! findmnt -rn -o TARGET | grep -q '^/mnt/pmx-passthrough/{{ guest_name }}/'
+          changed_when: false
+          when: guest_kind == 'lxc'
+
+        - name: Remove passthrough directory and node-side secret
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - "/mnt/pmx-passthrough/{{ guest_name }}"
+            - "/etc/pve/priv/ceph/pmx-{{ guest_name }}.secret"
+          when: guest_kind == 'lxc'
+
+        - name: Remove CephX entity {{ cephx_entity }}
+          ansible.builtin.command: "ceph auth rm {{ cephx_entity | quote }}"
+          register: auth_rm
+          failed_when: false
+          changed_when: auth_rm.rc == 0

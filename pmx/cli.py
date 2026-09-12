@@ -88,7 +88,11 @@ def cmd_new(**kwargs: object) -> None:
     from pmx.config import load
     from pmx.credentials import ensure_ad_password
     from pmx.ansible_runner import run_playbook
-    from pmx.preflight import assert_ip_available, assert_name_available
+    from pmx.preflight import (
+        assert_cephx_entity_available,
+        assert_ip_available,
+        assert_name_available,
+    )
     from pmx.translate import extra_vars_from
 
     cfg = load()
@@ -102,6 +106,10 @@ def cmd_new(**kwargs: object) -> None:
 
     assert_name_available(cfg, kwargs["name"])  # type: ignore[arg-type]
     assert_ip_available(cfg, kwargs["static_ip"])  # type: ignore[arg-type]
+    if kwargs["cephfs"]:
+        # A CephFS guest gets its own `client.<name>` identity; refuse to adopt one
+        # that already exists.
+        assert_cephx_entity_available(cfg, kwargs["name"])  # type: ignore[arg-type]
 
     extra_vars = extra_vars_from(kwargs) | {
         "target_node": cfg.default_node,
@@ -112,9 +120,8 @@ def cmd_new(**kwargs: object) -> None:
         "ad_realm": cfg.ad_realm,
         "ad_join_user": cfg.ad_join_user,
         "proxmox_api_host": cfg.proxmox_api_host,
-        "ceph_conf_path": cfg.ceph_conf_path,
-        "ceph_secret_path": cfg.ceph_secret_path,
         "ceph_mons": cfg.ceph_mons,
+        "cephx_key_type": cfg.cephx_key_type,
         "dc_ssh_host": cfg.dc_ssh_host,
         "state_log_path": str(Path(__file__).resolve().parent.parent / cfg.state_log_path),
     }

@@ -8,13 +8,18 @@ default_bridge: vmbr0
 ad_domain: broken.wrx
 ad_realm: BROKEN.WRX
 ad_join_user: jtd
-ceph_conf_path: /etc/ceph/ceph.conf
-ceph_secret_path: /etc/ceph/cephfs.secret
+# Ceph monitors, named in every guest's CephFS mount source. The workstation is
+# NOT a Ceph client: each guest that asks for --cephfs gets its own CephX
+# identity (client.<name>) minted on the node, scoped to the subpaths it asked
+# for, and removed again by `pmx destroy`.
 ceph_mons:
   - 192.168.9.11
   - 192.168.9.12
   - 192.168.9.13
   - 192.168.9.14
+# Key type for those identities. Guest kernels up to 6.8 only speak aes; set
+# aes256k once every CephFS guest runs a 7.0+ kernel. Optional, default aes.
+# cephx_key_type: aes
 state_log_path: state/guests.jsonl
 # ssh target for the Samba AD DC. `pmx destroy` ssh'es here to remove a guest's
 # DNS A/PTR and AD computer object with the DC's own root tooling (samba-tool /

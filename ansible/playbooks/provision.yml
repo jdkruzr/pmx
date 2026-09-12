@@ -3,8 +3,10 @@
 # Invoked by pmx CLI with extra-vars: guest_name, guest_kind (vm|lxc),
 # guest_os (ubuntu|rocky), cores, memory, disk, cephfs_mounts (list),
 # rbd_disk (int|null), extra_packages (list), static_ip (str|null),
-# domain_join (bool), target_node, default_storage, default_lxc_storage,
-# default_bridge, ad_domain, ad_realm, ad_join_user, proxmox_api_host.
+# static_gw (str|null), domain_join (bool), target_node, default_storage,
+# default_lxc_storage, default_bridge, ad_domain, ad_realm, ad_join_user,
+# proxmox_api_host, ceph_mons (list), cephx_key_type (aes|aes256k),
+# dc_ssh_host, state_log_path.
 # See ansible/group_vars/all.yml for defaults.
 
 - name: Create guest on Proxmox

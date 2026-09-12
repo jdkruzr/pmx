@@ -1,52 +1,95 @@
 ---
 # LXC CephFS mount path (delegated to host).
-# Host-side mount on Proxmox node, then patch /etc/pve/lxc/<vmid>.conf with mp<N>: lines.
+# Unprivileged containers can't run the kernel CephFS client, so the node mounts
+# each requested subtree — per guest, with the guest's own CephX identity — under
+# /mnt/pmx-passthrough/<guest_name>/<subpath> and binds it into the container via
+# mp<N>: lines in /etc/pve/lxc/<vmid>.conf.
 
 - name: Delegate host-side work to the Proxmox node
+  delegate_to: "{{ target_node }}"
+  become: false
   block:
+
+    - name: Mint or reconcile the guest's CephX identity
+      ansible.builtin.include_tasks: cephx.yml
+
+    # pmxcfs (/etc/pve) fixes ownership/permissions itself: /etc/pve/priv is
+    # root-only by construction, so no owner/mode here.
+    - name: Install the guest's CephX secret on the node (pmxcfs, root-only)
+      ansible.builtin.copy:
+        content: "{{ cephx_secret }}"
+        dest: "{{ cephfs_lxc_secret_path }}"
+      no_log: true
+      register: cephx_secret_file
+
+    - name: Find live host mounts for this guest
+      ansible.builtin.shell: >-
+        findmnt -rn -t ceph -o TARGET | grep '^{{ cephfs_lxc_mount_root }}/' || true
+      register: lxc_live_mounts
+      changed_when: false
+
+    # The container's bind pins the CephFS superblock, so it has to stop before
+    # the host mount can be torn down for a fresh session with the new secret.
+    - name: Stop container before re-authenticating its mounts
+      ansible.builtin.command: "pct stop {{ guest_vmid }}"
+      when: cephx_secret_file.changed and lxc_live_mounts.stdout_lines | length > 0
+      failed_when: false
+      changed_when: true
+
+    - name: Unmount stale sessions after a secret change
+      ansible.posix.mount:
+        path: "{{ item }}"
+        state: unmounted
+      loop: "{{ lxc_live_mounts.stdout_lines }}"
+      when: cephx_secret_file.changed
 
     - name: Ensure mount directories exist on host
       ansible.builtin.file:
-        path: "/mnt/pmx-passthrough{{ item.subpath }}"
+        path: "{{ cephfs_lxc_mount_root }}{{ item.subpath }}"
         state: directory
         mode: "0755"
       loop: "{{ cephfs_specs }}"
 
-    - name: Mount CephFS subpaths on the host (if not already)
+    - name: Mount CephFS subpaths on the host
       ansible.posix.mount:
-        path: "/mnt/pmx-passthrough{{ item.subpath }}"
+        path: "{{ cephfs_lxc_mount_root }}{{ item.subpath }}"
         src: "{{ ceph_mons | join(',') }}:6789:{{ item.subpath }}"
         fstype: ceph
-        opts: "{{ cephfs_mount_opts }}"
+        opts: "{{ cephfs_lxc_mount_opts }}"
         state: mounted
       loop: "{{ cephfs_specs }}"
 
-    - name: Find next free mp index for this container
+    - name: Assert each host mount authenticates as {{ cephx_entity }}
       ansible.builtin.shell: |
-        set -e
-        for i in $(seq 0 15); do
-          if ! grep -q "^mp${i}:" /etc/pve/lxc/{{ guest_vmid }}.conf 2>/dev/null; then
-            echo $i; exit 0
-          fi
-        done
-        echo "no free mp slot" >&2; exit 1
-      register: mp_index
+        set -o pipefail
+        findmnt -rn -t ceph -o OPTIONS {{ (cephfs_lxc_mount_root ~ item.subpath) | quote }} \
+          | tr ',' '\n' | grep -qx name={{ guest_name | quote }}
+      args:
+        executable: /bin/bash
+      loop: "{{ cephfs_specs }}"
       changed_when: false
 
-    - name: Append mp line to container config
-      ansible.builtin.lineinfile:
-        path: "/etc/pve/lxc/{{ guest_vmid }}.conf"
-        line: "mp{{ (mp_index.stdout | int) + ansible_loop.index0 }}: /mnt/pmx-passthrough{{ item.subpath }},mp={{ item.dest }},ro=0"
-        insertafter: EOF
-      loop: "{{ cephfs_specs }}"
-      loop_control:
-        extended: true
-
-    - name: Restart container so mp lines take effect
+    # Idempotent: a dest that already has an mp line is left alone, so a
+    # reconfigure run never appends duplicates.
+    - name: Ensure an mp line per mount in the container config
       ansible.builtin.shell: |
-        pct stop {{ guest_vmid }}
-        pct start {{ guest_vmid }}
-      changed_when: true
+        set -e
+        conf=/etc/pve/lxc/{{ guest_vmid }}.conf
+        changed=0
+        {% for s in cephfs_specs %}
+        if ! grep -qE '^mp[0-9]+: .*,mp={{ s.dest }}(,|$)' "$conf"; then
+          for i in $(seq 0 255); do grep -qE "^mp${i}:" "$conf" || break; done
+          echo "mp${i}: {{ cephfs_lxc_mount_root }}{{ s.subpath }},mp={{ s.dest }},ro=0" >> "$conf"
+          changed=1
+        fi
+        {% endfor %}
+        echo "changed=$changed"
+      register: mp_result
+      changed_when: "'changed=1' in mp_result.stdout"
 
-  delegate_to: "{{ target_node }}"
-  become: false
+    - name: Restart container so new mp lines or a fresh mount take effect
+      ansible.builtin.shell: |
+        pct stop {{ guest_vmid }} || true
+        pct start {{ guest_vmid }}
+      when: mp_result.changed or cephx_secret_file.changed
+      changed_when: true

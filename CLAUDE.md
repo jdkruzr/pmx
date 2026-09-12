@@ -52,8 +52,8 @@ playbooks under `ansible/`.
 - **Subcommands are thin:** `pmx/cli.py` parses + validates, then delegates to
   `pmx/<verb>.py`. Avoid putting logic in `cli.py`.
 - **Names are the primary key:** Guest identity is `--name`; uniqueness is
-  enforced via live `qm list; pct list` check before provisioning (see
-  `pmx/preflight.py`). Valid names: `^[a-zA-Z0-9][a-zA-Z0-9-]*$`.
+  enforced cluster-wide via `pvesh get /cluster/resources` before provisioning
+  (see `pmx/preflight.py` → `pmx/cluster.py`). Valid names: `^[a-zA-Z0-9][a-zA-Z0-9-]*$`.
 - **Ansible is invoked, never imported:** `pmx/ansible_runner.py` shells out
   to `ansible-playbook` with a single `-e <json>` blob. Extra-vars names are
   contractual — see `pmx/translate.py`.

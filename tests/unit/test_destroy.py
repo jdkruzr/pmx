@@ -200,3 +200,61 @@ def test_destroy_dry_run_non_domain_skips_dc_inspection() -> None:
         mock_inspect.assert_not_called()
         mock_playbook.assert_not_called()
         mock_tombstone.assert_not_called()
+
+
+def test_destroy_passes_cephx_entity_from_state() -> None:
+    """A tracked guest's CephX identity is handed to destroy.yml so the node
+    removes it alongside the guest."""
+    with (
+        patch("pmx.destroy.load") as mock_load,
+        patch("pmx.destroy.find_by_name") as mock_find,
+        patch("pmx.destroy.query_cluster") as mock_query,
+        patch("pmx.destroy.run_playbook") as mock_playbook,
+        patch("pmx.destroy.tombstone") as mock_tombstone,
+        patch("pmx.destroy.click.echo"),
+    ):
+        cfg = MagicMock()
+        cfg.state_log_path = "/tmp/state.jsonl"
+        cfg.proxmox_ssh_host = "root@192.168.9.12"
+        cfg.ad_domain = "broken.wrx"
+        cfg.dc_ssh_host = "sysop@192.168.9.20"
+        mock_load.return_value = cfg
+
+        state = MagicMock()
+        state.domain_joined = True
+        state.ip = "192.168.9.95"
+        state.cephx_entity = "client.cumulus"
+        mock_find.return_value = state
+        mock_query.return_value = {"cumulus": (114, "vm", "cerritos")}
+        mock_playbook.return_value = 0
+        mock_tombstone.return_value = state
+
+        assert run("cumulus", yes=True) == 0
+        assert mock_playbook.call_args[0][1]["cephx_entity"] == "client.cumulus"
+
+
+def test_destroy_untracked_guest_passes_empty_cephx_entity() -> None:
+    """An untracked guest never triggers `ceph auth rm`: pmx did not mint its key,
+    so it passes an empty cephx_entity."""
+    with (
+        patch("pmx.destroy.load") as mock_load,
+        patch("pmx.destroy.find_by_name") as mock_find,
+        patch("pmx.destroy.query_cluster") as mock_query,
+        patch("pmx.destroy.run_playbook") as mock_playbook,
+        patch("pmx.destroy.tombstone") as mock_tombstone,
+        patch("pmx.destroy.click.echo"),
+    ):
+        cfg = MagicMock()
+        cfg.state_log_path = "/tmp/state.jsonl"
+        cfg.proxmox_ssh_host = "root@192.168.9.12"
+        cfg.ad_domain = "broken.wrx"
+        cfg.dc_ssh_host = "sysop@192.168.9.20"
+        mock_load.return_value = cfg
+
+        mock_find.return_value = None
+        mock_query.return_value = {"admin": (150, "vm", "kelvin")}
+        mock_playbook.return_value = 0
+        mock_tombstone.return_value = None
+
+        assert run("admin", yes=True) == 0
+        assert mock_playbook.call_args[0][1]["cephx_entity"] == ""

@@ -1,0 +1,58 @@
+---
+# Mint (or reconcile) the guest's CephX identity on the Proxmox node and fetch
+# its secret into the fact `cephx_secret`. Included by both vm.yml and lxc.yml.
+#
+# Idempotence: existence is decided by `ceph auth get`, never by the behaviour
+# of `fs authorize` on a pre-existing entity (which varies across releases).
+# Caps drift is reconciled with `ceph auth caps` using the same strings
+# `fs authorize` writes, so a no-op run reports no change.
+
+- name: CephX identity for {{ guest_name }} (on {{ target_node }})
+  delegate_to: "{{ target_node }}"
+  become: false
+  block:
+    - name: Compute entity name and least-privilege caps
+      ansible.builtin.set_fact:
+        cephx_entity: "client.{{ guest_name }}"
+        cephx_caps: "{{ cephfs_specs | pmx_cephx_caps(cephfs_fs_name) }}"
+
+    - name: Read existing caps for {{ cephx_entity }} (key never printed)
+      ansible.builtin.shell: |
+        set -o pipefail
+        ceph auth get {{ cephx_entity | quote }} -f json 2>/dev/null \
+          | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)[0]["caps"]))'
+      args:
+        executable: /bin/bash
+      register: cephx_existing
+      changed_when: false
+      failed_when: false  # non-zero rc == entity absent
+
+    - name: Mint {{ cephx_entity }} with CephFS-only caps
+      ansible.builtin.command: >-
+        ceph fs authorize {{ cephfs_fs_name | quote }} {{ cephx_entity | quote }}
+        {% for s in cephfs_specs %}{{ s.subpath | quote }} rw {% endfor %}
+        --key_type {{ cephx_key_type | quote }} -o /dev/null
+      when: cephx_existing.rc != 0
+      changed_when: true
+
+    - name: Reconcile caps on existing {{ cephx_entity }}
+      ansible.builtin.command: >-
+        ceph auth caps {{ cephx_entity | quote }}
+        mds {{ cephx_caps.mds | quote }}
+        mon {{ cephx_caps.mon | quote }}
+        osd {{ cephx_caps.osd | quote }}
+      when:
+        - cephx_existing.rc == 0
+        - (cephx_existing.stdout | from_json) != cephx_caps
+      changed_when: true
+
+    - name: Fetch secret for {{ cephx_entity }}
+      ansible.builtin.command: "ceph auth get-key {{ cephx_entity | quote }}"
+      register: cephx_key_raw
+      changed_when: false
+      no_log: true
+
+    - name: Export secret as a fact
+      ansible.builtin.set_fact:
+        cephx_secret: "{{ cephx_key_raw.stdout | trim }}"
+      no_log: true

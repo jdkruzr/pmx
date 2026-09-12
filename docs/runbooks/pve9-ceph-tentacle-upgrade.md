@@ -477,56 +477,50 @@ pending. Note for Stage E: guests currently receive the **admin** key via
 ## Stage E — Reconcile `proxmox-manage` with the upgraded cluster
 
 Performed **after** the cluster is on 9.2 + Tentacle. These are edits to *this*
-repo. All references below were re-verified against the current tree:
+repo plus the migration of the hand-built CephFS clients. Executed 2026-09-12;
+the full record is [`stageE-status-2026-09-12.md`](stageE-status-2026-09-12.md).
 
-- **Hardcoded Ceph repo URL (must change) — CONFIRMED at
-  `ansible/roles/mount_cephfs/tasks/vm.yml:29`:**
-  ```yaml
-  baseurl: https://download.ceph.com/rpm-reef/el9/$basearch
-  ```
-  Change `rpm-reef` → `rpm-tentacle` (and the `description: Ceph Reef` on line 28).
-  Re-check `el9` vs the Rocky guest's actual RHEL major. Note: `reef`/`ceph.com`
-  appears **only** here and in a `docs/implementation-plans/...` history file — no
-  other code paths hardcode the release.
-- **Provision guests with `discard=on` (new, found 2026-09-05).** No role sets
-  `discard` anywhere: `seed_ubuntu_vm/tasks/main.yml:62` and
-  `seed_rocky_vm/tasks/main.yml:62` build `--scsi0 {{ default_storage }}:...`
-  without it, `create_vm` only clones and `qm resize`s, and `attach_rbd_disk`
-  passes the disk straight through. Every VM `pmx` creates therefore never
-  releases freed blocks back to RBD, so its image grows monotonically toward
-  fully-allocated and its PBS backups carry the dead data forever. Measured on
-  the live cluster: VM 101 sat at 63 GiB allocated for 12.8 GiB of real data.
-  Add `,discard=on` in the two seed roles (templates propagate it to clones) and
-  in `attach_rbd_disk`. Guests also need periodic `fstrim` — Ubuntu and Rocky
-  both ship the `fstrim.timer` unit, so confirm it is enabled rather than
-  writing a cron job.
-- **Scoped CephFS client key.** `mount_cephfs/defaults/main.yml:10` hands guests
-  `name=admin`. Create a restricted `client.pmx-cephfs` key (CephFS-only caps)
-  and switch the role to it. Not strictly an upgrade item, but Stage D+ key
-  rotation is far simpler when guests don't hold the admin key.
-- **Re-validate PVE-CLI output parsing on 9.2** (format-drift risk). All
-  confirmed present; re-run against real PVE 9 output and adjust if columns moved:
-  - `pmx/preflight.py:106-148` — `_parse_names(qm_pct_output)`, the `qm list`/
-    `pct list` heuristic (status-word filter set, `---` section switch).
-  - `pmx/destroy.py:62-92` — `_query_cluster(ssh_host)`, same dual-section parse.
-  - `ansible/roles/create_vm/tasks/main.yml:92-128` — net0 MAC regex
-    (`regex_findall('^net0:[^,]*virtio=...')`) and `qm guest cmd
-    network-get-interfaces` JSON parse (`from_json | selectattr ...`).
-  - `ansible/roles/create_lxc/tasks/main.yml:120-126` — `pct config` hwaddr
-    regex (`regex_findall('hwaddr=([0-9A-Fa-f:]+)')`).
-- **LXC mountpoint syntax** — `ansible/roles/mount_cephfs/tasks/lxc.yml:39`
-  generates `mp{N}: /mnt/pmx-passthrough{subpath},mp={dest},ro=0`; confirm still
-  valid under PVE 9 `pct`.
-- **CephFS mount options** — `name=admin,secretfile=/etc/ceph/cephfs.secret,
-  noatime,_netdev` (defined in `mount_cephfs/defaults/main.yml:10`, used in
-  `vm.yml`/`lxc.yml`); confirm these mounts still work under Tentacle.
-- **Toolchain:** `pmx` runs on the Ubuntu workstation and SSHes to the nodes, so
-  Trixie's Python 3.13 is irrelevant to it. Nothing to do here.
-- Run the `pmx` integration smoke tests against the upgraded cluster:
-  `tests/integration/test_lifecycle.sh`, `test_create_vm.sh`,
-  `test_create_lxc.sh`, `test_ad_join.sh`, `test_state_log.sh`,
-  `test_kitchen_sink.sh`. Also `uv run pytest tests/ tests/unit/` and
-  `uv run ruff check .` after any edits.
+- **Hardcoded Ceph repo URL — DONE.** `ansible/roles/mount_cephfs/tasks/vm.yml`
+  now points Rocky guests at `rpm-tentacle/el9`. (Not exercised by any harness:
+  no Rocky VM with `--cephfs` is built by the integration tests.)
+- **Provision guests with `discard=on` — DONE.** `seed_ubuntu_vm`/`seed_rocky_vm`
+  attach `--scsi0 ...,discard=on`, `attach_rbd_disk` adds `,discard=on`, and the
+  `common` role enables `fstrim.timer` on VMs. Background: without it every VM
+  image grows monotonically (VM 101 sat at 63 GiB allocated for 12.8 GiB of real
+  data). The existing templates 9000/9001 were fixed by hand with
+  `qm set <id> --scsi0 bwrx:base-<id>-disk-0,discard=on`.
+- **Per-guest CephX identities — DONE (redesigned from "one scoped key").**
+  Every `--cephfs` guest gets `client.<name>`, minted on the node with
+  `ceph fs authorize cephfs client.<name> <subpath> rw ... --key_type aes`,
+  reconciled with `ceph auth caps` on reconfigure, removed by `pmx destroy`.
+  The guest keeps only `/etc/ceph/<name>.secret` (0600); no `ceph.conf`, no
+  admin keyring. The workstation is no longer a Ceph client at all
+  (`ceph_conf_path`/`ceph_secret_path` removed from the config). The five
+  hand-built clients (neptune, tauron, velorum, pluto, ceres) were migrated to
+  the same scheme by hand, PVE's `bwrx`/`cephfs` storages got their own
+  identities, and `client.admin` was rotated to aes256k — see the status doc.
+- **Re-validate PVE-CLI output parsing on 9.2 — DONE, no drift.**
+  - Name uniqueness no longer parses `qm list`/`pct list` at all:
+    `pmx/preflight.py` uses `pmx/cluster.py:query_cluster()` (`pvesh get
+    /cluster/resources --output-format json`), which is also cluster-wide (the
+    old check was node-local and would have missed a guest on another node).
+    `_parse_names()` and its tests are gone.
+  - `ansible/roles/create_vm/tasks/main.yml` net0 MAC regex and
+    `qm guest cmd network-get-interfaces` JSON parse: validated against live
+    9.2 output.
+  - `ansible/roles/create_lxc/tasks/main.yml` `pct config` hwaddr regex:
+    validated by the kitchen-sink LXC run.
+- **LXC mountpoint syntax — VALIDATED** under PVE 9 `pct`; the role now writes
+  `mp{N}: /mnt/pmx-passthrough/<name>{subpath},mp={dest},ro=0` (per-guest host
+  mount) and is idempotent on reconfigure (no duplicate `mp` lines).
+- **CephFS mount options — CHANGED** to
+  `name=<guest>,secretfile=/etc/ceph/<guest>.secret,fs=cephfs,noatime,_netdev,recover_session=clean`;
+  proven on Tentacle with 6.8 guest kernels during the migration.
+- **Toolchain:** `pmx` runs on neptune (`/home/sysop/proxmox-manage`) and SSHes
+  to the nodes, so Trixie's Python 3.13 is irrelevant to it.
+- Integration smoke tests (`tests/integration/*.sh`) were run from neptune
+  against the upgraded cluster; results in the status doc. `uv run pytest
+  tests/ tests/unit/` and `uv run ruff check .` are green.
 
 ---
 

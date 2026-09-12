@@ -7,7 +7,7 @@
 - name: Attach RBD-backed disk via qm set
   ansible.builtin.command: >
     qm set {{ guest_vmid }}
-    --{{ rbd_disk_slot }} {{ default_storage }}:{{ rbd_disk }}
+    --{{ rbd_disk_slot }} {{ default_storage }}:{{ rbd_disk }},discard=on
   delegate_to: "{{ target_node }}"
   changed_when: true
   when: rbd_disk is not none

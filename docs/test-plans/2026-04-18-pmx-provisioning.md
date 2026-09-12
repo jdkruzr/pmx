@@ -14,7 +14,8 @@ This plan covers every acceptance criterion that can't be fully proven by the
 ## Prerequisites
 
 - Proxmox cluster reachable at `root@192.168.9.12` (passwordless SSH)
-- Workstation has `/etc/ceph/cephfs.secret` and `/etc/ceph/ceph.conf`
+- Workstation is **not** a Ceph client (no `/etc/ceph` needed): `--cephfs` guests get a
+  per-guest CephX identity minted on the node
 - `uv run pytest` passes (70 unit tests — already automatic)
 - Zentyal AD domain `broken.wrx` reachable; `jtd` (or equivalent) AD join account exists
 - `AD_JOIN_PASSWORD` exportable for domain-join runs
@@ -133,15 +134,15 @@ Purpose: validate error-path behavior when AD is unreachable mid-configure.
 1. After a successful `--cephfs` build: `uv run pmx reconfigure <name>`
 2. Inspect ansible output: expected `changed=0` on every `mount_cephfs` task
 
-### AC8.4: Missing `/etc/ceph/cephfs.secret` → actionable error
+### AC8.4: Per-guest CephX identity (replaces the old workstation-secret check)
 
-1. `sudo mv /etc/ceph/cephfs.secret /etc/ceph/cephfs.secret.bak`
-2. `uv run pmx new --name cephfail --os ubuntu --cephfs supernote:/mnt/sn`
-3. Expected: fails with message "pmx requires /etc/ceph/cephfs.secret on
-   the workstation..."
-4. `sudo mv /etc/ceph/cephfs.secret.bak /etc/ceph/cephfs.secret`
-5. Cleanup: `uv run pmx destroy cephfail --yes` if guest was created
-   pre-mount-phase
+Obsolete as written: the workstation no longer holds a Ceph secret. Covered by
+`test_kitchen_sink.sh` instead, which asserts that the guest's live mount is
+`name=<guest>` (not `admin`), that only `/etc/ceph/<guest>.secret` (0600) exists
+on the guest, that `client.<guest>` on the cluster is scoped to the requested
+subpath, that `pmx reconfigure` leaves `mount_cephfs` unchanged, and that
+`pmx destroy` removes the entity (and, for LXC, the host-side passthrough).
+A pre-existing `client.<name>` makes `pmx new --cephfs` abort in preflight.
 
 ### AC10.2: Unknown package → vmid-annotated error
 
@@ -212,7 +213,7 @@ through create → verify → reconfigure → destroy.
 | AC8.1 | test_kitchen_sink.sh | Phase 3 AC8.1 (reboot) | hybrid |
 | AC8.2 | test_kitchen_sink.sh | — | integration harness |
 | AC8.3 | module contract | Phase 3 AC8.3 | hybrid |
-| AC8.4 | — | Phase 3 AC8.4 | human-only |
+| AC8.4 | test_kitchen_sink.sh + tests/unit/test_preflight.py | — | integration harness (redefined: per-guest CephX identity) |
 | AC9.1 | test_kitchen_sink.sh | — | integration harness |
 | AC9.2 | tests/test_cli.py::test_rbd_disk_rejects_lxc | — | Unit verified |
 | AC10.1 | test_kitchen_sink.sh | — | integration harness |

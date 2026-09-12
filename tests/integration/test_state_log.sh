@@ -26,7 +26,7 @@ import json, sys
 rec = json.loads(open("${LOG}").readline())
 expected = {"hostname","vmid","mac","ip","kind","os","domain_joined",
             "cephfs_mounts","rbd_disk","extra_packages","static_ip",
-            "static_gw","created_at","destroyed_at"}
+            "static_gw","cephx_entity","created_at","destroyed_at"}
 missing = expected - set(rec.keys())
 assert not missing, f"missing fields: {missing}"
 assert rec["hostname"] == "${NAME1}", rec
@@ -34,6 +34,7 @@ assert rec["kind"] == "lxc", rec
 assert rec["os"] == "ubuntu", rec
 assert rec["domain_joined"] is False, rec
 assert rec["destroyed_at"] == "", rec  # live on creation
+assert rec["cephx_entity"] == "", rec  # no --cephfs, so no CephX identity minted
 PY
 
 # AC15.2 — second build appends, first record preserved

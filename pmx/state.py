@@ -4,6 +4,7 @@ Append-only JSON Lines; each record is a dict with:
   hostname, vmid, mac, ip, kind ('vm'|'lxc'), os ('ubuntu'|'rocky'),
   domain_joined (bool), cephfs_mounts (list[str]), rbd_disk (int|None),
   extra_packages (list[str]), static_ip (str|None), static_gw (str|None),
+  cephx_entity (str, 'client.<hostname>' when the guest has CephFS mounts, else ''),
   created_at (ISO8601 str), destroyed_at (ISO8601 str, '' while live).
 
 The log is never rewritten in place. A destroyed guest is recorded by appending
@@ -38,6 +39,7 @@ class GuestRecord:
     extra_packages: list[str] = field(default_factory=list)
     static_ip: str | None = None
     static_gw: str | None = None
+    cephx_entity: str = ""
     created_at: str = ""
     destroyed_at: str = ""
 

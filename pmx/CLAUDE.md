@@ -1,6 +1,6 @@
 # pmx Python Package
 
-Last verified: 2026-04-18
+Last verified: 2026-09-12
 
 ## Purpose
 
@@ -24,6 +24,8 @@ contract. No cluster-side state lives here.
     `os.environ["AD_JOIN_PASSWORD"]` so ansible-playbook inherits it.
 - **Expects:**
   - `~/.config/pmx/config.yml` exists and matches the `Config` dataclass shape.
+    The workstation is **not** a Ceph client; configs still carrying
+    `ceph_conf_path`/`ceph_secret_path` are refused with a hint.
   - SSH keypair auth to `proxmox_ssh_host` (BatchMode=yes, no prompts).
   - For `new`/`reconfigure` with domain join: operator can supply an AD password.
 
@@ -45,11 +47,11 @@ contract. No cluster-side state lives here.
 | `credentials.py` | shell | `ensure_ad_password()` — prompt + env caching |
 | `translate.py` | core | `extra_vars_from(kwargs)` — CLI kwargs → ansible JSON |
 | `ansible_runner.py` | shell | `run_playbook(name, extra_vars, dry_run)` — subprocess wrapper |
-| `preflight.py` | shell | `assert_name_available()` — name validation + cluster uniqueness |
+| `preflight.py` | shell | `assert_name_available()` — name validation, reserved-CephX-name guard, cluster-wide uniqueness via `pmx.cluster`; `assert_ip_available()`; `assert_cephx_entity_available()` — `client.<name>` must not pre-exist when `--cephfs` is used |
 | `state.py` | core | `GuestRecord` dataclass, `read_all/find_by_name/append/tombstone` for JSONL (append-only; destroy soft-deletes via tombstone) |
-| `destroy.py` | shell | `run(name, yes)` — cluster query + adcli cleanup + playbook |
+| `destroy.py` | shell | `run(name, yes)` — cluster query + DC cleanup + playbook (passes `cephx_entity` from state so the node drops the guest's key) |
 | `reconfigure.py` | shell | `run(name)` — replay original build params from state log |
-| `verify.py` | shell | `run(name)` — ssh-based sssd/id/sudoers smoke test |
+| `verify.py` | shell | `run(name)` — ssh-based sssd/id/sudoers smoke test; for CephFS guests also `client.<name>` caps on the node + `name=<guest>` on each live mount |
 | `seed.py` | shell | `run()` — template-build playbook launcher |
 
 ## Key Decisions
@@ -71,13 +73,14 @@ contract. No cluster-side state lives here.
 
 - `Config` is frozen — never mutated after load.
 - `GuestRecord.created_at` is ISO8601 UTC; `append()` fills it if missing.
-- `_parse_names()` in `preflight.py` is a best-effort heuristic over
-  `qm list; pct list` output — it recognises status words
-  `{running, stopped, suspended, paused, mounted}` and will need updating
-  if Proxmox adds new container states.
+- Name uniqueness is judged cluster-wide (`pmx.cluster.query_cluster`, i.e.
+  `pvesh get /cluster/resources`), never by node-local `qm list`/`pct list`.
+- `GuestRecord.cephx_entity` is `client.<hostname>` iff the guest has CephFS
+  mounts; `destroy` only runs `ceph auth rm` when it is non-empty, so a guest
+  pmx never tracked can never take a hand-made key down with it.
 - `translate.extra_vars_from()` keys are the single source of truth for
   what playbooks receive; renaming a key is a breaking change across roles.
-- `destroy._query_cluster()` is authoritative for `(vmid, kind)` — the
+- `cluster.query_cluster()` is authoritative for `(vmid, kind, node)` — the
   state log is advisory and may be missing (warning, not error).
 
 ## Gotchas
@@ -85,8 +88,10 @@ contract. No cluster-side state lives here.
 - `run_playbook()` resolves playbooks relative to `ansible/playbooks/`, and
   uses `cwd=ansible/` so roles in `ansible/roles/` and the custom filter
   plugin are auto-discovered. Don't call it from tests without mocking.
-- `preflight.assert_name_available()` uses `BatchMode=yes`; if the operator
-  has no ssh key to the Proxmox host, this aborts before any playbook runs.
+- Preflight ssh (`query_cluster`, `assert_cephx_entity_available`) uses
+  `BatchMode=yes`; if the operator has no ssh key to the Proxmox host, this
+  aborts before any playbook runs. `ceph auth get` exits 2 for a missing
+  entity — that is the "free" signal; anything else is a failed query.
 - `reconfigure.run()` *requires* a state log record — there is no way to
   reconfigure a guest pmx didn't create.
 - `verify.run()` assumes ssh user `ansible` for VMs and `root` for LXC

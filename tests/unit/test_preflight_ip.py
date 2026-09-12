@@ -26,8 +26,6 @@ def _make_cfg() -> Config:
         ad_domain="broken.wrx",
         ad_realm="BROKEN.WRX",
         ad_join_user="jtd",
-        ceph_conf_path="/etc/ceph/ceph.conf",
-        ceph_secret_path="/etc/ceph/cephfs.secret",
         ceph_mons=["192.168.9.11"],
         state_log_path="state/guests.jsonl",
     )

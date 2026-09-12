@@ -12,3 +12,6 @@ from the `pmx` provisioning workflow documented elsewhere in `docs/`.
 - [pve9-ceph-tentacle-upgrade.md](pve9-ceph-tentacle-upgrade.md) — planned
   three-stage upgrade of all four nodes from PVE 8.2 / Ceph Reef to PVE 9.2 /
   Ceph Tentacle 20.2 (Reef→Squid, then the OS dist-upgrade, then Squid→Tentacle).
+- [stageE-status-2026-09-12.md](stageE-status-2026-09-12.md) — Stage E: per-guest
+  CephX identities in `pmx`, migration of the hand-built CephFS clients off
+  `client.admin`, PVE storages on their own keys, admin rotated to aes256k.
