@@ -123,10 +123,10 @@ Purpose: validate error-path behavior when AD is unreachable mid-configure.
 
 ### AC8.1: Reboot-survival of VM CephFS mount
 
-1. After `test_kitchen_sink.sh` VM path, note the VMID and IP (192.168.9.80)
+1. After `test_kitchen_sink.sh` VM path, note the VMID and IP (192.168.9.90)
 2. `ssh root@192.168.9.12 "qm reboot <vmid>"`
-3. Wait 60s (until `ssh ansible@192.168.9.80 true` returns)
-4. `ssh ansible@192.168.9.80 "findmnt /mnt/sn"` → expected: mount present
+3. Wait 60s (until `ssh ansible@192.168.9.90 true` returns)
+4. `ssh ansible@192.168.9.90 "findmnt /mnt/sn"` → expected: mount present
    (fstab entry replayed)
 
 ### AC8.3: Explicit idempotent re-run of mount_cephfs
@@ -177,10 +177,10 @@ through create → verify → reconfigure → destroy.
 | Step | Action | Expected |
 |------|--------|----------|
 | E.1 | `export AD_JOIN_PASSWORD=<real>` | — |
-| E.2 | `uv run pmx new --name e2e-full-$$ --kind vm --os ubuntu --cephfs supernote:/mnt/sn --rbd-disk 10 --extra-packages htop,jq --static-ip 192.168.9.80/24` | Exit 0; state log appended |
+| E.2 | `uv run pmx new --name e2e-full-$$ --kind vm --os ubuntu --cephfs supernote:/mnt/sn --rbd-disk 10 --extra-packages htop,jq --static-ip 192.168.9.90/24` | Exit 0; state log appended |
 | E.3 | `cat state/guests.jsonl \| tail -1 \| python3 -m json.tool` | All expected fields populated with correct types (vmid int, domain_joined bool, cephfs_mounts list) |
 | E.4 | `uv run pmx verify e2e-full-$$` | Exit 0; three `[ OK ]` lines |
-| E.5 | `ssh ansible@192.168.9.80 "findmnt /mnt/sn && which htop jq && ip -4 addr show \| grep 192.168.9.80/24 && id Administrator@broken.wrx && lsblk \| grep 10G"` | All succeed |
+| E.5 | `ssh ansible@192.168.9.90 "findmnt /mnt/sn && which htop jq && ip -4 addr show \| grep 192.168.9.90/24 && id Administrator@broken.wrx && lsblk \| grep 10G"` | All succeed |
 | E.6 | `uv run pmx reconfigure e2e-full-$$` (twice) | Both exits 0; second ansible recap shows `changed=0` |
 | E.7 | `ssh root@192.168.9.12 "qm reboot <vmid>"`; wait 60s | `findmnt /mnt/sn` still shows ceph mount after reboot (AC8.1) |
 | E.8 | `uv run pmx destroy e2e-full-$$ --yes` | Exit 0; `qm list` no longer contains hostname |

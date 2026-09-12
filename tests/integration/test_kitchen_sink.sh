@@ -27,7 +27,7 @@ uv run pmx new --name "${NAME}" --kind vm --os ubuntu \
   --cephfs supernote:/mnt/sn \
   --rbd-disk 10 \
   --extra-packages htop,jq \
-  --static-ip 192.168.9.80/24 --static-gw 192.168.9.1
+  --static-ip 192.168.9.90/24 --static-gw 192.168.9.1
 
 vmid=$(ssh ${NODE} "qm list | awk -v n=${NAME} '\$2==n{print \$1}'")
 echo "VMID: ${vmid}"
@@ -36,25 +36,25 @@ echo "VMID: ${vmid}"
 ssh ${NODE} "qm config ${vmid} | grep -E '^scsi1:\s+bwrx:.+,discard=on.*,size=10G'"
 
 # Verify static IP (AC11.1)
-ssh -o StrictHostKeyChecking=accept-new ansible@192.168.9.80 \
-  "ip -4 addr show | grep -q 'inet 192.168.9.80/24'"
+ssh -o StrictHostKeyChecking=accept-new ansible@192.168.9.90 \
+  "ip -4 addr show | grep -q 'inet 192.168.9.90/24'"
 
 # Verify cephfs mount (AC8.1) — and that it authenticates as the guest's OWN identity
-ssh ansible@192.168.9.80 "findmnt /mnt/sn | grep -q ceph"
-ssh ansible@192.168.9.80 "findmnt -rn -t ceph -o OPTIONS /mnt/sn | tr ',' '\n' | grep -qx name=${NAME}"
+ssh ansible@192.168.9.90 "findmnt /mnt/sn | grep -q ceph"
+ssh ansible@192.168.9.90 "findmnt -rn -t ceph -o OPTIONS /mnt/sn | tr ',' '\n' | grep -qx name=${NAME}"
 
 # Only the guest's own secret lives on the guest, root-only; no admin artefacts
-ssh ansible@192.168.9.80 "sudo stat -c %a /etc/ceph/${NAME}.secret | grep -qx 600"
-ssh ansible@192.168.9.80 "! test -e /etc/ceph/ceph.client.admin.keyring && ! test -e /etc/ceph/ceph.conf && ! test -e /etc/ceph/cephfs.secret"
+ssh ansible@192.168.9.90 "sudo stat -c %a /etc/ceph/${NAME}.secret | grep -qx 600"
+ssh ansible@192.168.9.90 "! test -e /etc/ceph/ceph.client.admin.keyring && ! test -e /etc/ceph/ceph.conf && ! test -e /etc/ceph/cephfs.secret"
 
 # The entity on the cluster is scoped to exactly the requested subpath
 ssh ${NODE} "ceph auth get client.${NAME} -f json | grep -q 'path=/supernote'"
 
 # Verify extra packages (AC10.1)
-ssh ansible@192.168.9.80 "which htop && which jq"
+ssh ansible@192.168.9.90 "which htop && which jq"
 
 # fstrim.timer is on (disks carry discard=on)
-ssh ansible@192.168.9.80 "systemctl is-enabled fstrim.timer"
+ssh ansible@192.168.9.90 "systemctl is-enabled fstrim.timer"
 
 # verify sees the cephx caps + mount identity
 uv run pmx verify "${NAME}"
@@ -62,7 +62,7 @@ uv run pmx verify "${NAME}"
 # reconfigure is idempotent for the CephFS role (AC8.3)
 uv run pmx reconfigure "${NAME}" 2>&1 | tee /tmp/ks-reconf-vm.log
 assert_mount_cephfs_idempotent /tmp/ks-reconf-vm.log
-ssh ansible@192.168.9.80 "findmnt -rn -t ceph -o OPTIONS /mnt/sn | tr ',' '\n' | grep -qx name=${NAME}"
+ssh ansible@192.168.9.90 "findmnt -rn -t ceph -o OPTIONS /mnt/sn | tr ',' '\n' | grep -qx name=${NAME}"
 
 # Cleanup via pmx so the CephX identity goes with the guest
 uv run pmx destroy "${NAME}" --yes
@@ -79,7 +79,7 @@ uv run pmx new --name "${LXC_NAME}" --kind lxc --os rocky \
   --cores 1 --memory 1024 --disk 8 \
   --cephfs supernote:/mnt/sn \
   --extra-packages htop,jq \
-  --static-ip 192.168.9.81/24
+  --static-ip 192.168.9.91/24
 
 lxc_vmid=$(ssh ${NODE} "pct list | awk -v n=${LXC_NAME} '\$NF==n{print \$1}'")
 echo "LXC VMID: ${lxc_vmid}"
@@ -95,14 +95,14 @@ ssh ${NODE} "test -f /etc/pve/priv/ceph/pmx-${LXC_NAME}.secret"
 ssh ${NODE} "pct exec ${lxc_vmid} -- findmnt /mnt/sn | grep -q /mnt/sn"
 
 # Verify static IP on LXC (AC11.2)
-ssh -o StrictHostKeyChecking=accept-new root@192.168.9.81 \
-  "ip -4 addr show | grep -q 'inet 192.168.9.81/24'"
+ssh -o StrictHostKeyChecking=accept-new root@192.168.9.91 \
+  "ip -4 addr show | grep -q 'inet 192.168.9.91/24'"
 
 # Verify inferred gateway picked up the .1-of-subnet default (AC11.2, Critical 2 regression guard)
-ssh root@192.168.9.81 "ip -4 route show default | grep -q '192.168.9.1'"
+ssh root@192.168.9.91 "ip -4 route show default | grep -q '192.168.9.1'"
 
 # Verify extra packages (AC10.1 on Rocky via dnf)
-ssh root@192.168.9.81 "which htop && which jq"
+ssh root@192.168.9.91 "which htop && which jq"
 
 uv run pmx verify "${LXC_NAME}"
 

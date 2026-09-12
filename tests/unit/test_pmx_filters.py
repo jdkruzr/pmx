@@ -11,7 +11,7 @@ import pytest
 filter_plugins_path = Path(__file__).parent.parent.parent / "ansible" / "filter_plugins"
 sys.path.insert(0, str(filter_plugins_path))
 
-from pmx_filters import pmx_parse_cephfs  # noqa: E402
+from pmx_filters import pmx_cephx_caps, pmx_parse_cephfs  # noqa: E402
 
 
 class TestPmxParseCephfs:
@@ -56,9 +56,6 @@ class TestPmxParseCephfs:
         """Raises ValueError if destination is empty (trailing colon)."""
         with pytest.raises(ValueError, match="destination cannot be empty"):
             pmx_parse_cephfs("foo:")
-
-
-from pmx_filters import pmx_cephx_caps
 
 
 class TestPmxCephxCaps:
