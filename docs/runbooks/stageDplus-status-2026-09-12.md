@@ -1,6 +1,7 @@
 # Stage D+ status — CephX key rotation to `aes256k`
 
-Started **2026-09-12 ~16:00 CDT**, immediately after Stage D. Companion to
+Started **2026-09-12 ~16:00 CDT**, immediately after Stage D.
+**HEALTH_ERR cleared 16:20 CDT.** Remaining WRNs are all the guests-on-admin item (Stage E). Companion to
 [`pve9-ceph-tentacle-upgrade.md`](pve9-ceph-tentacle-upgrade.md).
 
 ## Mechanism, as learned on this build (20.2.4-pve4) — no docs are shipped
@@ -58,15 +59,53 @@ Health went from `ERR ×2 / WRN ×4` to **`ERR ×1 / WRN ×4`**:
 | `AUTH_INSECURE_CLIENT_KEY_TYPE` | WRN (1) | `client.admin` ← guests |
 | `AUTH_INSECURE_KEYS_ALLOWED` / `_CREATABLE` | WRN | `aes` must stay allowed while any client is aes |
 
-## Open question — do not flip blind
+## The service-cipher question — resolved from source, then proven live
 
-`ceph mon set auth_service_cipher aes256k` would clear the last ERR. It is
-runtime and reversible. **But** it is not known whether it changes only the
-mon-internal rotating keys (client-opaque, safe) or also the **session keys
-handed to clients** — which would break every 6.8-kernel guest mount at its next
-ticket rotation. Proving it empirically requires `wipe-rotating-service-keys`,
-which invalidates every client's tickets at once, so there is no safe bounded
-test. Resolve from the Ceph source / CVE-2025-30156 advisory before acting.
+Read `src/auth/cephx/CephxKeyServer.cc` (tentacle branch). The session key a
+client receives in a service ticket is typed as:
+
+```cpp
+int ktype = std::min<int>(key_type.value_or(info.service_secret.get_type()),
+                          info.service_secret.get_type());
+```
+
+with the comment *"The session key cipher must be supported by both the
+requesting client and the target service. During rolling upgrades, services are
+typically upgraded before external clients."* So a client presenting an `aes`
+key gets an `aes` session key **regardless of the rotating service key type**.
+`auth_service_cipher` hardens only the mon-internal ticket encryption — which is
+the actual CVE — and is designed to be safe for old clients. The CVE-2025-30156
+page confirms kernel support "began in 7.0" (nodes) and is *recommended, not
+required* for clients.
+
+Applied 2026-09-12 ~16:20 CDT:
+
+```bash
+ceph mon set auth_service_cipher aes256k     # clears AUTH_INSECURE_SERVICE_TICKETS (the last ERR)
+ceph mon set auth_preferred_cipher aes256k   # new keys default to aes256k
+# auth_allowed_ciphers stays "aes, aes256k" — client.admin / guests are aes
+```
+
+**Proven, not assumed:** velorum (kernel 6.8.0-137) then did a *fresh* CephFS
+mount with `client.admin` — new mon session, new service tickets under the
+aes256k service cipher — and read 13 entries. Every existing guest mount
+(neptune ×3, tauron ×2, pluto) stayed responsive.
+
+## Result: `HEALTH_ERR` → `HEALTH_WARN`
+
+| Check | State | Blocked on |
+|---|---|---|
+| `AUTH_INSECURE_SERVICE_KEY_TYPE` | **cleared** | — |
+| `AUTH_INSECURE_SERVICE_TICKETS` | **cleared** | — |
+| `AUTH_INSECURE_ROTATING_SERVICE_KEY_TYPE` | WRN | self-clears when the mon's rotating keys next regenerate (≤ `auth_service_ticket_ttl` = 3600 s). `ceph auth wipe-rotating-service-keys` forces it now but invalidates every client's tickets at once — safe per the `min()` logic, but a needless reconnect storm. Chose to wait. |
+| `AUTH_INSECURE_CLIENT_KEY_TYPE` | WRN (1) | `client.admin` — the guests' key on 6.8 kernels |
+| `AUTH_INSECURE_KEYS_ALLOWED` / `_CREATABLE` | WRN | `aes` must stay allowed while `client.admin` is `aes` |
+
+The three remaining WRNs all trace to one fact: **guests use `client.admin` on
+kernels without aes256k.** That is Stage E's "scope the admin key down" item,
+and it is the same piece of work: give guests a dedicated CephFS-only key (on
+`aes`, until their kernels catch up), move them off admin, rotate admin to
+aes256k, and only then remove `aes` from `auth_allowed_ciphers`.
 
 ## False alarm worth recording
 
