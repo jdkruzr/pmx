@@ -73,12 +73,60 @@ Commit: _see git log for "Stage E: per-guest CephX identities"_.
 
 ## Existing templates
 
-_pending_ — `qm set 9000 --scsi0 bwrx:base-9000-disk-0,discard=on` and the same
-for 9001.
+Done 2026-09-12 17:2x CDT: `qm set 9000 --scsi0 bwrx:base-9000-disk-0,discard=on`
+and `qm set 9001 --scsi0 bwrx:base-9001-disk-0,discard=on`. Clones inherit it.
 
 ## Migration of the hand-built clients
 
-_pending_ — per-host table (entity, caps, mounts, verification).
+Recipe per host (`H`), node side on cerritos, guest side as root:
+
+1. `ceph fs authorize cephfs client.$H <sub> rw [<sub> rw ...] --key_type aes -o /dev/null`;
+   `ceph auth get client.$H` to eyeball the caps; `ceph auth get-key client.$H`
+   piped over stdin to the guest (never on a command line).
+2. Guest: `umask 077; cat > /etc/ceph/$H.secret` (root:root 0600);
+   `cp -n /etc/fstab /etc/fstab.pre-stageE`; on the ceph lines only:
+   `name=admin,secretfile=/etc/ceph/cephfs.secret` →
+   `name=$H,secretfile=/etc/ceph/$H.secret,fs=cephfs` and
+   `_netdev` → `_netdev,recover_session=clean`.
+3. Guest: stop whatever might open files, `umount` the mounts, **then** delete
+   `ceph.client.admin.keyring`, `cephfs.secret`, `ceph.conf`, then `mount -a`,
+   restart services.
+4. Verify: `findmnt -t ceph -o TARGET,SOURCE,OPTIONS` shows `name=$H`,
+   `mds_namespace=cephfs`, `recover_session=clean`; root `ls` + touch/rm on each
+   mount; `/etc/ceph` holds only `$H.secret` (+ `rbdmap`); MDS `session ls`
+   (`auth_name.id`) shows the host under `client.$H` and no longer under admin.
+
+Findings that apply to every host:
+
+- **Mounting without `ceph.conf` works** but `mount.ceph` (19.2.3) grumbles:
+  "can't open ceph.conf", "unable to get monitor info from DNS SRV", "unable to
+  find a keyring on /etc/ceph/ceph.client.<H>.keyring…". All noise: mons come
+  from the fstab source, the secret from `secretfile=`, and dmesg shows the mon
+  session and real fsid. The only visible side effect is `fsid=0000…` in the
+  mount options, cosmetic.
+- `fs=cephfs` is shown back by the kernel as `mds_namespace=cephfs`.
+- Directories owned by service users (`ncdata`/`nextclouddata` are 770
+  `www-data`) give an unprivileged `ls` "Permission denied": POSIX, not CephX.
+  Verify as root.
+
+| Host | Entity | Caps (mds) | Mounts | Result |
+|---|---|---|---|---|
+| tauron (.40) | `client.tauron` | `path=/nextclouddata`, `path=/ncdata` | `/mnt/nextclouddata`, `/mnt/ncdata` | 17:38 CDT. php-fpm + apache2 stopped ~5 s around the remount. Both mounts `name=tauron`; root ls + write OK; Nextcloud `status.php` installed, not in maintenance (34.0.0). MDS: 2 sessions as `client.tauron`, 0 as admin from tauron. |
+| ceres (.199, physical) | `client.ceres` | `path=/nextclouddata/jtd/files/onyx`, `path=/nextclouddata/jtd/files/Saber` | `/mnt/onyx`, `/mnt/saber` | 18:03 CDT. Nothing held the mounts; llama-server kept running. Both `name=ceres`; root ls + write OK; MDS 2 sessions as `client.ceres`. Admin sessions cluster-wide: 13 → 9. |
+| pluto (.72) | `client.pluto` | `path=/deluge` | `/mnt/deluge` | 18:16 CDT. Guest side via `qm guest exec 111` (sysop sudo needs a password there); secret staged over sysop's stdin, root `install`ed it. `deluged` + `deluge-web` stopped ~5 s. The operator's own shell was parked in `/mnt/deluge/Completed` and had to move first (umount would have hit EBUSY) — the script checks `fuser -m` and refuses before touching anything. `name=pluto`, ls + write OK. Admin sessions: 9 → 8. |
+| velorum (.70) | `client.velorum` | `allow rw fsname=cephfs` (root scope, operator decision: filestash browses the whole tree) | `/mnt/cephfs` | 18:17 CDT. Via `qm guest exec 110`. No holders; filestash containers use a docker volume, not the mount, and stayed up. `name=velorum`, ls + write OK. Admin sessions: 8 → 7. |
+| neptune (.52, also the pmx workstation) | `client.neptune` | `path=/supernote`, `path=/remarkable`, `path=/nextclouddata/jtd/files/onyx` | `/mnt/supernote`, `/mnt/remarkable`, `/mnt/onyx` | 18:49 CDT. `docker stop ultrabridge` first (it binds supernote + remarkable), holders re-checked, three umounts, `mount -a`, `docker start`; `docker exec ls` inside the container shows 38 / 6 entries on the re-attached binds. All three `name=neptune`, ls + write OK. Admin sessions: 7 → 4. |
+
+After neptune, `session ls` shows exactly four `client.admin` sessions — the
+nodes' own `/mnt/pve/cephfs` storage mounts (root `/`) — and every other
+session under its host's own entity.
+
+**Globus** (.50): no CephFS mount (unit static, never active), but it still has
+the three world-readable admin artefacts in `/etc/ceph`. sysop's sudo needs a
+password there and the guest agent isn't installed, so this is an operator
+item: `sudo rm /etc/ceph/ceph.client.admin.keyring /etc/ceph/cephfs.secret
+/etc/ceph/ceph.conf` (and `sudo apt install qemu-guest-agent` while you're in
+there). After the admin rotation below those files are dead keys anyway.
 
 ## PVE storages and `client.admin`
 
