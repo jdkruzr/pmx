@@ -279,17 +279,21 @@ Two corrections to the runbook's Stage D+ text, from observation:
 Decision pending: mute the six checks with a TTL until Stage D+ runs, or leave
 them visible.
 
-### 2. globus (103) — guest agent has never responded
+### 2. globus (103) — agent unresponsive: it was mid-dist-upgrade (resolved)
 
-Not a Stage C casualty. `agent: 1` is set in its config, but globus was
-classified "rebuildable" in Stage 0 and skipped the agent verification that
-covered 100/101/105/112/113 — so there is **no record of its agent ever
-answering**. After the migration home it is `running`, the guest **answers ping
-at 192.168.9.50**, and the machine type (`pc-i440fx-9.0`) was preserved. Most
-likely the same state 112/113 were in before Stage 0: agent enabled on the
-host, `qemu-guest-agent` not installed in the guest. Fix is the Stage 0 recipe
-(install in-guest, then `qm reboot` — a reboot from *inside* the guest is not
-enough).
+Not a Stage C casualty and not a missing agent. The operator had globus in the
+middle of **its own in-guest dist-upgrade on the console** at the time. That
+explains everything observed: `qemu-guest-agent` and `sshd` were being upgraded
+(agent silent, port 22 refusing) while the kernel and network stack were fine
+(ping answered at 192.168.9.50).
+
+Worth keeping as a data point: **globus was live-migrated twice during its own
+dist-upgrade** — discovery→kelvin and back — with 85 ms downtime each way and
+no effect on the running `dpkg` transaction. Live migration over Ceph RBD is
+robust enough that a guest mid-package-upgrade doesn't notice.
+
+Lesson for the checks, though: "agent no response" on a guest that has never
+been agent-verified is *not* diagnostic on its own. Ping first.
 
 ## Node progress
 
