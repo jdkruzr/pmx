@@ -119,11 +119,52 @@ Old file kept as `/etc/lvm/lvm.conf.pve8-<date>`. `/etc/issue.dpkg-dist` is
 simply deleted (wiki: keep ours — it's the PVE web-UI banner). No
 `sshd_config.dpkg-dist` or `grub` prompt was generated on this node.
 
+## kelvin — done 2026-09-12 14:16 CDT
+
+Same recipe, now gated: the dry-run's 61-package removal list was
+**byte-identical** to excelsior's reviewed list, nothing load-bearing, targets
+matched (9.2.18 / 7.0.14-16 / QEMU 11.0.3), no kernel pin — so the dist-upgrade
+launched automatically. Any deviation would have stopped it and shown the diff.
+
+| Step | Result |
+|---|---|
+| Evacuate | 106→discovery 10 s, 111→discovery 10 s, 115→cerritos 9 s |
+| Dry run | 644 up / 156 new / 61 removed (identical removals to excelsior; fewer upgrades only because kelvin carries fewer packages) |
+| dist-upgrade | **rc=0 in 253 s**, audit clean; only `chrony` in failed units, as predicted |
+| `lvm.conf` | same starting state as excelsior (2-entry filter under marker); atomic swap to PVE 9 file + 3-entry filter; verified |
+| Reboot | back in **40 s** on 7.0.14-16; chrony active; zero failed units |
+| NIC pinning | held — `nic0/nic1/nic2`, `vmbr0` up on .14 |
+| Gate | passed in 24 s; no clock skew |
+| 10G test | **9.40 Gbit/s / 22 s**, 0 errors, dmesg clean |
+| Guests home | 57 / 81 / 87 ms downtime, all agents answer |
+
+**One false alarm worth recording:** my post-boot check found `/mnt/pve/cephfs`
+*not* mounted at t+15 s. It was fine — PVE mounts CephFS storage on demand via
+`pvestatd`, which hadn't run yet. `pvesm status` triggers it; afterwards the
+mount was present with the 4-address mon string, read+write OK, one MDS session.
+**Check CephFS after `pvesm status`, not 15 seconds into boot.**
+
+Ceph is now exactly half-migrated: 2 mon / 4 osd / 1 mgr / 1 mds on 19.2.6,
+the rest on 19.2.5. `noout` still set.
+
+## Hardware is not uniform — this is known, not a fault
+
+| Node | 10G NIC | Onboard 1G | CPUs | Notes |
+|---|---|---|---|---|
+| discovery | dual-port ixgbe (`enp1s0f0/f1`) | r8169 (`enp7s0`) | 16 | |
+| cerritos | dual-port ixgbe (`enp1s0f0/f1`) | r8169 (`enp6s0`) | 16 | |
+| excelsior | **single-port** ixgbe (`enp1s0`) | r8169 (`enp5s0`) | **32** | `pcie_aspm=off` on cmdline; pinned as `nic0/nic1` only |
+| kelvin | dual-port ixgbe (`enp1s0f0/f1`) | r8169 (`enp6s0`) | 16 | |
+
+The NIC pinning is keyed on MAC address, not interface name, so these
+differences are exactly what it absorbs. Every node's uplink is `nic1` and
+`vmbr0` bridges it; nothing else needs to match.
+
 ## Node progress
 
 | Node | Evacuate | Sources | `-s` plan reviewed | dist-upgrade | Reboot → 7.0 | Verify + 10G traffic | Configs reviewed |
 |---|---|---|---|---|---|---|---|
 | excelsior | done | done | done | done | **done** | **done** | **done** |
-| kelvin | — | — | — | — | — | — | — |
+| kelvin | done | done | done | done | **done** | **done** | **done** |
 | cerritos | — | — | — | — | — | — | — |
 | discovery | — | — | — | — | — | — | — |
