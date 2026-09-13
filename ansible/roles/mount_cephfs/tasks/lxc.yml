@@ -13,14 +13,25 @@
     - name: Mint or reconcile the guest's CephX identity
       ansible.builtin.include_tasks: cephx.yml
 
-    # pmxcfs (/etc/pve) fixes ownership/permissions itself: /etc/pve/priv is
-    # root-only by construction, so no owner/mode here.
+    # pmxcfs (/etc/pve) refuses the copy module's atomic temp-file rename
+    # ("Operation not permitted" on .ansible_tmp*), so write the file directly.
+    # /etc/pve/priv is root-only by construction; pmxcfs fixes ownership itself.
     - name: Install the guest's CephX secret on the node (pmxcfs, root-only)
-      ansible.builtin.copy:
-        content: "{{ cephx_secret }}"
-        dest: "{{ cephfs_lxc_secret_path }}"
-      no_log: true
+      ansible.builtin.shell: |
+        set -e
+        f={{ cephfs_lxc_secret_path | quote }}
+        if [ -f "$f" ] && [ "$(cat "$f")" = "$CEPHX_SECRET" ]; then
+          echo unchanged
+        else
+          umask 077; printf '%s' "$CEPHX_SECRET" > "$f"; echo written
+        fi
+      args:
+        executable: /bin/bash
+      environment:
+        CEPHX_SECRET: "{{ cephx_secret }}"
       register: cephx_secret_file
+      changed_when: "'written' in cephx_secret_file.stdout"
+      no_log: true
 
     - name: Find live host mounts for this guest
       ansible.builtin.shell: >-
