@@ -246,7 +246,11 @@ each to `/tmp/stageE-tests/<harness>.log`. Neptune's real `state/guests.jsonl`
 - **Run 13**: the Rocky VM joined the domain (the two fixes hold); the run
   then failed on the shared `reload ssh` handler, which named the unit `ssh`
   — that is Ubuntu's name; on EL it is `sshd`. Handler made OS-aware.
-- **Run 14** (`test_ad_join` → `test_kitchen_sink`): _pending_.
+- **Run 14**: Ubuntu VM, Ubuntu LXC and **Rocky VM** all joined and passed.
+  The Rocky LXC failed at the new crypto-policy step: the container image
+  has no `update-crypto-policies` (`crypto-policies-scripts` not installed).
+  Added to the Rocky join package list.
+- **Run 15** (`test_ad_join` → `test_kitchen_sink`): _pending_.
 
 ## Health at the end
 
