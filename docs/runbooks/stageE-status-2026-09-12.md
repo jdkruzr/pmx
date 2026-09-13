@@ -224,7 +224,11 @@ each to `/tmp/stageE-tests/<harness>.log`. Neptune's real `state/guests.jsonl`
   guest: moved to `[sssd]` → `getent group domain_admins` resolves, `id`
   shows underscore names, `sudo -l -U jtd` matches. Fixed in the template;
   sudoers now carries both `%domain_admins` and `%domain\ admins`.
-- **Run 11** (`test_ad_join` → `test_kitchen_sink`): _pending_.
+- **Run 11**: `getent group domain_admins` now resolves (underscore names
+  throughout `id`); the harness then failed its sudoers check, which it ran
+  as the unprivileged `ansible` user against root-only `/etc/sudoers.d`.
+  Harness fix: sudo prefix on VMs (as `pmx verify` already does).
+- **Run 12** (`test_ad_join` → `test_kitchen_sink`): _pending_.
 
 ## Health at the end
 
