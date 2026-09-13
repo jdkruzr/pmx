@@ -168,7 +168,22 @@ each to `/tmp/stageE-tests/<harness>.log`. Neptune's real `state/guests.jsonl`
   known, `pct exec` installs/enables sshd (Rocky: `dnf openssh-server` +
   `sshd`; Ubuntu: ensure `ssh`) and the role `wait_for`s port 22 before
   `add_host`. Leftovers destroyed with `pmx destroy` (one tracked, one not).
-- **Run 4** (`test_state_log` onward): _pending_.
+- **Run 4** (`test_state_log` onward): `test_state_log.sh` **passed** (the
+  Rocky container came up with sshd and was configured; both records carry
+  every field). `test_create_vm.sh`: the Ubuntu VM passed; the Rocky VM never
+  raised its guest agent and never even appeared in ARP. Its serial log
+  (captured across a reset) ends in
+  `Fatal glibc error: CPU does not support x86-64-v2` →
+  `Kernel panic - not syncing: Attempted to kill init!`. **This one is a real
+  upgrade regression:** no template sets a `cpu:` type, so under QEMU 11 the
+  VM runs as the deprecated `kvm64` ("Common KVM processor", x86-64-v1);
+  EL9 userland requires v2. Ubuntu tolerates v1, Rocky does not. Proven on
+  the failing VM: `qm set 107 --cpu x86-64-v2-AES` + stop/start → agent
+  answered in 10 s (note `qm reset` is not enough; the CPU model only changes
+  on a fresh QEMU process). Fixed (`create_vm` sets `--cpu x86-64-v2-AES` on
+  every clone; both seed roles bake it into templates); templates 9000/9001
+  pinned by hand. All four nodes are Zen 4, so v2-AES migrates freely.
+- **Run 5** (`test_create_vm` onward): _pending_.
 
 ## Health at the end
 
