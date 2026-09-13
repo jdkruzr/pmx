@@ -243,7 +243,10 @@ each to `/tmp/stageE-tests/<harness>.log`. Neptune's real `state/guests.jsonl`
   `msDS-SupportedEncryptionTypes = 24` (AES128+AES256) or `28` (RC4+AES) on
   `jtd` via `samba-tool`, or `kdc default domain supported enctypes = 28` on
   the DC — after which the LEGACY subpolicy can be dropped again.
-- **Run 13** (`test_ad_join` → `test_kitchen_sink`): _pending_.
+- **Run 13**: the Rocky VM joined the domain (the two fixes hold); the run
+  then failed on the shared `reload ssh` handler, which named the unit `ssh`
+  — that is Ubuntu's name; on EL it is `sshd`. Handler made OS-aware.
+- **Run 14** (`test_ad_join` → `test_kitchen_sink`): _pending_.
 
 ## Health at the end
 
