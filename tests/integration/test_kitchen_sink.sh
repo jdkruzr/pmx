@@ -75,10 +75,11 @@ LXC_NAME="pmxtest-kitchen-lxc-$$"
 HOST_MNT="/mnt/pmx-passthrough/${LXC_NAME}/supernote"
 
 echo "=== Building kitchen-sink LXC: ${LXC_NAME} (NOTE: --static-gw deliberately omitted — exercises the .1-of-subnet inference path) ==="
+# jq and nano are in Rocky's base repos; htop is EPEL-only, which pmx does not enable.
 uv run pmx new --name "${LXC_NAME}" --kind lxc --os rocky \
   --cores 1 --memory 1024 --disk 8 \
   --cephfs supernote:/mnt/sn \
-  --extra-packages htop,jq \
+  --extra-packages jq,nano \
   --static-ip 192.168.9.91/24
 
 lxc_vmid=$(ssh ${NODE} "pct list | awk -v n=${LXC_NAME} '\$NF==n{print \$1}'")
@@ -102,7 +103,7 @@ ssh -o StrictHostKeyChecking=accept-new root@192.168.9.91 \
 ssh root@192.168.9.91 "ip -4 route show default | grep -q '192.168.9.1'"
 
 # Verify extra packages (AC10.1 on Rocky via dnf)
-ssh root@192.168.9.91 "command -v htop && command -v jq"
+ssh root@192.168.9.91 "command -v jq && command -v nano"
 
 uv run pmx verify "${LXC_NAME}"
 
