@@ -208,7 +208,11 @@ each to `/tmp/stageE-tests/<harness>.log`. Neptune's real `state/guests.jsonl`
   assertion: `/proc/self/uid_map` is `%10u`-padded and the harness grepped
   for single spaces, so that check could never have matched. Harness fixed
   (`62d75c3`). Leftover guests destroyed via `pmx destroy`.
-- **Run 9** (`test_create_lxc` → `test_ad_join` → `test_kitchen_sink`):
+- **Run 9**: `test_create_lxc.sh` built and configured both containers; the
+  Rocky one failed the harness's `which tmux && …` check with rc 127 because
+  the Rocky container image has no `which`. Harness fix: `command -v`
+  everywhere (the kitchen-sink LXC check had the same landmine).
+- **Run 10** (`test_create_lxc` → `test_ad_join` → `test_kitchen_sink`):
   _pending_.
 
 ## Health at the end
