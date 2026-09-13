@@ -212,8 +212,19 @@ each to `/tmp/stageE-tests/<harness>.log`. Neptune's real `state/guests.jsonl`
   Rocky one failed the harness's `which tmux && …` check with rc 127 because
   the Rocky container image has no `which`. Harness fix: `command -v`
   everywhere (the kitchen-sink LXC check had the same landmine).
-- **Run 10** (`test_create_lxc` → `test_ad_join` → `test_kitchen_sink`):
-  _pending_.
+- **Run 10**: `test_create_lxc.sh` **passed** (both OS families).
+  `test_ad_join.sh` built and joined the Ubuntu VM (AD Administrator
+  resolves with full group membership) and then failed
+  `getent group domain_admins`: the group came back as `domain admins`.
+  Cause: `override_space = _` sat in the `[domain/…]` section of the sssd
+  template, where sssd silently ignores it (it is a `[sssd]`-section option,
+  SPECIAL SECTIONS in sssd.conf(5)). So the underscore convention that the
+  design, the role defaults, the sudoers drop-in's comment and the harness
+  all assume had never been in effect on any pmx guest. Proven on the joined
+  guest: moved to `[sssd]` → `getent group domain_admins` resolves, `id`
+  shows underscore names, `sudo -l -U jtd` matches. Fixed in the template;
+  sudoers now carries both `%domain_admins` and `%domain\ admins`.
+- **Run 11** (`test_ad_join` → `test_kitchen_sink`): _pending_.
 
 ## Health at the end
 
