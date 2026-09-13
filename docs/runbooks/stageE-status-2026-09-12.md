@@ -151,7 +151,15 @@ each to `/tmp/stageE-tests/<harness>.log`. Neptune's real `state/guests.jsonl`
   harness (`ce4bc87`): poll for the name before destroying. The leftover
   orphan was destroyed by hand with `pmx destroy` — which is the AC12.3 path
   and behaved: "not in state log" warning, destroy, CephX steps skipped.
-- **Run 2:** _pending_.
+- **Run 2:** `test_lifecycle.sh` **passed** end to end (6 min 42 s).
+  `test_state_log.sh` then failed on its first assertion: the fresh create
+  record lacked `destroyed_at`. Pre-existing: the Ansible writer in
+  `post_create_hook` never emitted that field, only the Python tombstone
+  writer did, and the harness asserts a live record carries it as `""`.
+  Fixed (`95b354e`): both writers now produce the same record shape. The
+  leftover container was destroyed with `pmx destroy` (tombstoned cleanly).
+- **Run 3** (`test_state_log` → `test_create_vm` → `test_create_lxc` →
+  `test_ad_join` → `test_kitchen_sink`): _pending_.
 
 ## Health at the end
 

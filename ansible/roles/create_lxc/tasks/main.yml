@@ -147,6 +147,23 @@
     msg: "Container {{ guest_name }} (VMID {{ new_vmid }}) did not acquire an IPv4 address within the timeout."
   when: guest_ip is none or guest_ip == ""
 
+# The Rocky 9 LXC template (rockylinux-9-default_20240912) ships without
+# openssh-server, so the configure play could never reach a Rocky container.
+# Bootstrap sshd through pct exec (no ssh needed) and wait for port 22 on every
+# OS before handing the guest to _configure.yml.
+- name: Ensure sshd is installed and running inside the container
+  ansible.builtin.command: >-
+    pct exec {{ new_vmid }} -- sh -c
+    "{% if guest_os == 'rocky' %}if ! rpm -q openssh-server >/dev/null 2>&1; then dnf -y -q install openssh-server && echo INSTALLED; fi; systemctl enable --now sshd{% else %}if ! dpkg -s openssh-server >/dev/null 2>&1; then apt-get -qq update && DEBIAN_FRONTEND=noninteractive apt-get -y -qq install openssh-server && echo INSTALLED; fi; systemctl enable --now ssh{% endif %}"
+  register: lxc_sshd
+  changed_when: "'INSTALLED' in lxc_sshd.stdout"
+
+- name: Wait for sshd inside the container
+  ansible.builtin.wait_for:
+    host: "{{ guest_ip }}"
+    port: 22
+    timeout: 120
+
 # DHCP can hand this IP to a brand-new container whose predecessor left a
 # now-wrong host key in the operator's known_hosts. accept-new auto-adds an
 # UNKNOWN key but REJECTS a CHANGED one, so a stale entry hard-fails the connect.
