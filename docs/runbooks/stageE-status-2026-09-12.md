@@ -266,7 +266,16 @@ each to `/tmp/stageE-tests/<harness>.log`. Neptune's real `state/guests.jsonl`
   shell write. (The build failed before `post_create_hook`, so the entity was
   untracked and had to be removed by hand — `pmx destroy` only removes
   entities it recorded.)
-- **Run 17** (`test_kitchen_sink`): _pending_.
+- **Run 17**: VM half passed; **the LXC CephFS path now works on the node**:
+  `client.<lxc>` minted, secret on pmxcfs, host mount
+  `/mnt/pmx-passthrough/<lxc>/supernote` authenticated as `name=<lxc>`, fstab
+  line with `x-systemd.requires=pve-cluster.service`, `mp0:` line in the
+  container config, `/mnt/sn` visible inside the container. It then failed
+  in `extra_packages`: `htop` is EPEL-only on Rocky and pmx does not enable
+  EPEL. Harness asks for `jq,nano` (base repos) on the Rocky container
+  instead. Untracked leftovers (build died before `post_create_hook`) were
+  cleaned by hand, mirroring `destroy.yml`.
+- **Run 18** (`test_kitchen_sink`): _pending_.
 
 ## Health at the end
 
