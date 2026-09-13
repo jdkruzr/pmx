@@ -51,11 +51,10 @@ smoke_test() {
     || echo "(mkhomedir live check requires a real AD user login; skipped in BatchMode)"
 
   echo "=== ${name} OK — destroying ==="
-  if [ "$kind" = "vm" ]; then
-    ssh root@192.168.9.12 "qm stop ${vmid} && qm destroy ${vmid} --purge"
-  else
-    ssh root@192.168.9.12 "pct stop ${vmid} && pct destroy ${vmid} --purge"
-  fi
+  # Via pmx, not raw qm/pct: that deregisters the AD computer object + DNS on
+  # the DC and tombstones the state record. Raw destroys left PMXTEST-*$ objects
+  # behind (NetBIOS names truncate to 15 chars, so they also collide across runs).
+  uv run pmx destroy "${name}" --yes
 }
 
 smoke_test vm  ubuntu
