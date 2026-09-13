@@ -37,7 +37,7 @@ smoke_test() {
   echo "IP: ${ip}"
 
   ssh -o StrictHostKeyChecking=accept-new ansible@${ip} "systemctl is-active qemu-guest-agent"
-  ssh ansible@${ip} "which tmux && which curl && which python3"
+  ssh ansible@${ip} "command -v tmux && command -v curl && command -v python3"
 
   echo "=== ${name} OK ==="
 }

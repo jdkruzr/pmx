@@ -51,7 +51,7 @@ ssh ansible@192.168.9.90 "! test -e /etc/ceph/ceph.client.admin.keyring && ! tes
 ssh ${NODE} "ceph auth get client.${NAME} -f json | grep -q 'path=/supernote'"
 
 # Verify extra packages (AC10.1)
-ssh ansible@192.168.9.90 "which htop && which jq"
+ssh ansible@192.168.9.90 "command -v htop && command -v jq"
 
 # fstrim.timer is on (disks carry discard=on)
 ssh ansible@192.168.9.90 "systemctl is-enabled fstrim.timer"
@@ -102,7 +102,7 @@ ssh -o StrictHostKeyChecking=accept-new root@192.168.9.91 \
 ssh root@192.168.9.91 "ip -4 route show default | grep -q '192.168.9.1'"
 
 # Verify extra packages (AC10.1 on Rocky via dnf)
-ssh root@192.168.9.91 "which htop && which jq"
+ssh root@192.168.9.91 "command -v htop && command -v jq"
 
 uv run pmx verify "${LXC_NAME}"
 

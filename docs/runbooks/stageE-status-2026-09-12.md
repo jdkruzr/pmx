@@ -203,7 +203,13 @@ each to `/tmp/stageE-tests/<harness>.log`. Neptune's real `state/guests.jsonl`
   list has always begun with `cloud-init status --wait`; Rocky's never did.
   Fixed: Rocky now waits for cloud-init too (plain dnf kept; it is the more
   robust of the two either way).
-- **Run 8** (`test_create_vm` onward): _pending_.
+- **Run 8**: `test_create_vm.sh` **passed** (Ubuntu and Rocky VMs built,
+  configured, verified). `test_create_lxc.sh` failed on its own uid-map
+  assertion: `/proc/self/uid_map` is `%10u`-padded and the harness grepped
+  for single spaces, so that check could never have matched. Harness fixed
+  (`62d75c3`). Leftover guests destroyed via `pmx destroy`.
+- **Run 9** (`test_create_lxc` → `test_ad_join` → `test_kitchen_sink`):
+  _pending_.
 
 ## Health at the end
 

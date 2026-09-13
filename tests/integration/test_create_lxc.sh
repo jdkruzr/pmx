@@ -37,7 +37,7 @@ smoke_test() {
   local ip
   ip=$(ssh root@192.168.9.12 "pct exec ${vmid} -- ip -j addr show" \
         | python3 -c 'import json,sys; print([a["local"] for i in json.load(sys.stdin) if i["ifname"]!="lo" for a in i.get("addr_info",[]) if a["family"]=="inet" and not a["local"].startswith("127.")][0])')
-  ssh -o StrictHostKeyChecking=accept-new root@${ip} "which tmux && which curl && which python3"
+  ssh -o StrictHostKeyChecking=accept-new root@${ip} "command -v tmux && command -v curl && command -v python3"
 
   echo "=== ${name} OK ==="
 }
