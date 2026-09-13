@@ -259,7 +259,14 @@ each to `/tmp/stageE-tests/<harness>.log`. Neptune's real `state/guests.jsonl`
   creating anything: `ansible.utils.ipmath` (gateway inference when
   `--static-gw` is omitted) needs `netaddr` on the controller and it was never
   a declared dependency. Added to `pyproject.toml` + `uv.lock`.
-- **Run 16** (`test_kitchen_sink`): _pending_.
+- **Run 16**: VM half passed again; the LXC half minted its entity and then
+  failed writing the secret to `/etc/pve/priv/ceph/`: pmxcfs refuses the
+  `copy` module's atomic temp-file rename (`Operation not permitted` on
+  `.ansible_tmp*`). A direct write works; the task is now a content-aware
+  shell write. (The build failed before `post_create_hook`, so the entity was
+  untracked and had to be removed by hand — `pmx destroy` only removes
+  entities it recorded.)
+- **Run 17** (`test_kitchen_sink`): _pending_.
 
 ## Health at the end
 
