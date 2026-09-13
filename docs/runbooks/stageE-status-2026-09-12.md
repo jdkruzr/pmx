@@ -188,7 +188,15 @@ each to `/tmp/stageE-tests/<harness>.log`. Neptune's real `state/guests.jsonl`
   address via guest agent". The agent answered `ping` before DHCP finished
   and the single `network-get-interfaces` query saw no address; a minute
   later the VM had `.125`. Fixed: the query retries until an IPv4 appears.
-- **Run 6** (`test_create_vm` onward): _pending_.
+- **Run 6** (`test_create_vm` onward): the Rocky VM booted, leased (`.126`)
+  and was reachable; the configure play then failed at `common: dnf upgrade`
+  with the dnf module's "An rpm exception occurred: package not installed".
+  Re-running the same module call ad hoc against that guest reported
+  "Nothing to do" and the guest was at 9.8, so the transaction had applied
+  and the module tripped over a package the upgrade obsoleted (known module
+  defect). Fixed: the Rocky upgrade is a plain `dnf -y upgrade --refresh`
+  with `changed` derived from its output.
+- **Run 7** (`test_create_vm` onward): _pending_.
 
 ## Health at the end
 
