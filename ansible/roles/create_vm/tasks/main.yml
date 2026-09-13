@@ -111,10 +111,22 @@
   changed_when: false
   when: static_ip is none
 
-- name: Discover DHCP-assigned IPv4
+# The agent answers ping before DHCP has necessarily finished (a Rocky VM on
+# x86-64-v2-AES is up in ~10 s), so keep asking until an IPv4 shows up.
+- name: Discover DHCP-assigned IPv4 (retry until the lease lands)
   ansible.builtin.command: "qm guest cmd {{ new_vmid }} network-get-interfaces"
   register: interfaces_raw
   changed_when: false
+  retries: 24
+  delay: 5
+  until: >-
+    interfaces_raw.rc == 0 and
+    (interfaces_raw.stdout | from_json
+     | selectattr('name', 'ne', 'lo')
+     | map(attribute='ip-addresses', default=[]) | flatten
+     | selectattr('ip-address-type', 'eq', 'ipv4')
+     | rejectattr('ip-address', 'search', '^127\\.')
+     | list | length) > 0
   when: static_ip is none
 
 - name: Parse first non-loopback IPv4 from guest agent output
