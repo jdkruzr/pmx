@@ -3,6 +3,10 @@
 domains = {{ ad_domain }}
 config_file_version = 2
 services = nss, pam
+# Global option (SPECIAL SECTIONS in sssd.conf(5)); silently ignored inside a
+# [domain/...] section, which is where it sat until 2026-09-12. With it here,
+# "domain admins" is presented by NSS as "domain_admins".
+override_space = _
 
 [domain/{{ ad_domain }}]
 id_provider = ad
@@ -14,7 +18,6 @@ cache_credentials = True
 krb5_store_password_if_offline = True
 ldap_id_mapping = True
 use_fully_qualified_names = False
-override_space = _
 default_shell = {{ sssd_default_shell }}
 fallback_homedir = {{ sssd_fallback_homedir }}
 simple_allow_groups = {{ sssd_simple_allow_groups | join(', ') }}
