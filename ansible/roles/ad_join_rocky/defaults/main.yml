@@ -11,3 +11,5 @@ ad_join_rocky_packages:
   - samba-common-tools
   - authselect
   - authselect-compat
+  # provides update-crypto-policies; absent from the Rocky LXC image
+  - crypto-policies-scripts
