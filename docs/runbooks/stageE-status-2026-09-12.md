@@ -135,7 +135,23 @@ rotation.
 
 ## Integration run
 
-_pending_.
+From neptune (`/home/sysop/proxmox-manage`, `PMX_LIVE=1`, AD password from a
+0600 file the operator created for the run), all six harnesses in sequence,
+each to `/tmp/stageE-tests/<harness>.log`. Neptune's real `state/guests.jsonl`
+(ntfy's live record, cumulus' history) was backed up first because
+`test_state_log.sh` deletes it; restored with the test records appended after.
+
+- **Run 1, `test_lifecycle.sh`:** create → verify → reconfigure ×2 → destroy
+  and the `--no-domain` LXC all passed (the new CephX teardown tasks in
+  `destroy.yml` correctly reported *skipped* for guests without mounts). The
+  final orphan case failed: the harness `pct create`s a container and
+  immediately calls `pmx destroy`, and the cluster-wide lookup
+  (`pvesh get /cluster/resources`, refreshed by pvestatd every ~10 s) did not
+  list it yet. The old node-local `pct list` never had that lag. Fixed in the
+  harness (`ce4bc87`): poll for the name before destroying. The leftover
+  orphan was destroyed by hand with `pmx destroy` — which is the AC12.3 path
+  and behaved: "not in state log" warning, destroy, CephX steps skipped.
+- **Run 2:** _pending_.
 
 ## Health at the end
 

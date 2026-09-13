@@ -16,6 +16,7 @@
       'static_gw': static_gw | default(None),
       'cephx_entity': ('client.' ~ guest_name) if (cephfs_mounts | default([]) | length > 0) else '',
       'created_at': ansible_date_time.iso8601,
+      'destroyed_at': '',
     } }}"
 
 - name: Ensure state/ directory exists on workstation
