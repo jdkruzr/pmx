@@ -48,6 +48,14 @@ ssh root@192.168.9.12 "pct create \$(pvesh get /cluster/nextid) \
   cephfs:vztmpl/\$(pveam list cephfs | grep -oE 'rockylinux-9-default_[^ ]+' | head -1) \
   --hostname ${ORPHAN} --memory 256 --rootfs bwrx:1 \
   --net0 name=eth0,bridge=vmbr0,ip=dhcp --unprivileged 1"
+# pmx resolves guests cluster-wide via `pvesh get /cluster/resources`, which
+# pvestatd refreshes every ~10 s; a container created a moment ago is not in it
+# yet. Wait for it to appear before asking pmx to destroy it.
+for _ in $(seq 1 12); do
+  ssh root@192.168.9.12 "pvesh get /cluster/resources --type vm --output-format json" \
+    | grep -q "\"name\":\"${ORPHAN}\"" && break
+  sleep 5
+done
 uv run pmx destroy "${ORPHAN}" --yes 2>&1 | tee /tmp/destroy2.log
 grep -q "not in" /tmp/destroy2.log
 
