@@ -9,6 +9,9 @@ dependencies = [
     "proxmoxer>=2.3,<3",
     "requests>=2.31",
     "pyyaml>=6.0",
+    # ansible.utils ipaddr/ipmath filters (gateway inference in create_*) need it
+    # on the controller.
+    "netaddr>=1.3",
 ]
 
 [project.scripts]
