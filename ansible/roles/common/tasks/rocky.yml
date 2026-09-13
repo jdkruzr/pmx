@@ -1,4 +1,14 @@
 ---
+# PVE's cloud-init user-data sets package_upgrade: true, so a fresh VM is running
+# its own dnf upgrade at first boot. Two dnf transactions at once end in
+# "package not installed" / "No such file or directory: .../packages/*.rpm".
+# Ubuntu has always waited here; Rocky did not.
+- name: Wait for cloud-init to finish (VM only)
+  ansible.builtin.command: cloud-init status --wait
+  changed_when: false
+  failed_when: false
+  when: guest_kind == "vm"
+
 # Plain dnf rather than the dnf module: when an upgrade obsoletes a package the
 # module completes the transaction and then fails with "An rpm exception
 # occurred: package not installed" (seen on a fresh Rocky 9 clone going to 9.8).
