@@ -10,6 +10,23 @@
     name: "{{ ad_join_rocky_packages }}"
     state: present
 
+# EL9's DEFAULT crypto policy permits only AES Kerberos enctypes, and the
+# Samba (Zentyal) KDC offers RC4 only for accounts that lack
+# msDS-SupportedEncryptionTypes — including the join account — so the join
+# fails with "KDC has no support for encryption type". AD-SUPPORT-LEGACY is the
+# subpolicy that re-enables arcfour-hmac-md5 for Kerberos (plain AD-SUPPORT no
+# longer does since RHEL 9.4). Ubuntu still allows RC4 by default, hence no
+# equivalent there. The real fix is DC-side: give accounts AES keys.
+- name: Read current crypto policy
+  ansible.builtin.command: update-crypto-policies --show
+  register: crypto_policy
+  changed_when: false
+
+- name: Allow RC4 Kerberos for the AD join (DEFAULT:AD-SUPPORT-LEGACY)
+  ansible.builtin.command: update-crypto-policies --set DEFAULT:AD-SUPPORT-LEGACY
+  when: "'AD-SUPPORT-LEGACY' not in crypto_policy.stdout"
+  changed_when: true
+
 - name: Check whether host is already realm-joined
   ansible.builtin.command: realm list
   register: realm_list
@@ -22,7 +39,7 @@
       ansible.builtin.shell: >
         set -o pipefail;
         printf '%s' "$AD_JOIN_PASSWORD"
-        | realm join --unattended --stdin-password -U {{ ad_join_user }} {{ ad_domain }}
+        | realm join --unattended -U {{ ad_join_user }} {{ ad_domain }}
       args:
         executable: /bin/bash
       # Ansible does not inherit the controller's env on remote tasks; the lookup
