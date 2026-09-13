@@ -4,7 +4,8 @@
     name: sssd
     state: restarted
 
+# Ubuntu names the unit ssh.service, Rocky/EL sshd.service.
 - name: reload ssh
   ansible.builtin.systemd:
-    name: ssh
+    name: "{{ 'ssh' if guest_os == 'ubuntu' else 'sshd' }}"
     state: reloaded
