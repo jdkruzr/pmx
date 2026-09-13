@@ -19,7 +19,9 @@ smoke_test() {
   local name="pmxtest-${os}-${kind}-$$"
   local ssh_user
 
-  if [ "$kind" = "vm" ]; then ssh_user="ansible"; else ssh_user="root"; fi
+  # VMs are reached as the unprivileged `ansible` user (passwordless sudo);
+  # /etc/sudoers.d is root-only, so root-level checks need a sudo prefix there.
+  if [ "$kind" = "vm" ]; then ssh_user="ansible"; sudo_prefix="sudo -n "; else ssh_user="root"; sudo_prefix=""; fi
 
   echo "=== Building ${kind} ${os} named ${name} ==="
   uv run pmx new --name "${name}" --kind "${kind}" --os "${os}" \
@@ -41,7 +43,7 @@ smoke_test() {
   ssh -o StrictHostKeyChecking=accept-new ${ssh_user}@${ip} "realm list | grep -q '${SMOKE_USER%@*}@broken.wrx\|broken.wrx'"
   ssh ${ssh_user}@${ip} "id Administrator@broken.wrx"
   ssh ${ssh_user}@${ip} "getent group domain_admins | head -1"
-  ssh ${ssh_user}@${ip} "test -f /etc/sudoers.d/domain-admins && visudo -cf /etc/sudoers.d/domain-admins"
+  ssh ${ssh_user}@${ip} "${sudo_prefix}test -f /etc/sudoers.d/domain-admins && ${sudo_prefix}/usr/sbin/visudo -cf /etc/sudoers.d/domain-admins"
 
   # AC5 mkhomedir check requires an actual domain login. Do via ssh to a domain user; fall through on failure since it needs interactive password.
   # If PMX_TEST_DOMAIN_USER is set, try passwordless (operator must have keys in AD user's homedir OR this line is skipped):
