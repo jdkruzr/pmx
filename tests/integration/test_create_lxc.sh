@@ -28,9 +28,10 @@ smoke_test() {
   echo "=== Checking unprivileged-with-idmap ==="
   ssh root@192.168.9.12 "grep -c '^unprivileged: 1' /etc/pve/lxc/${vmid}.conf"  # expects 1
   ssh root@192.168.9.12 "grep -c '^lxc.idmap = u 500000000' /etc/pve/lxc/${vmid}.conf"  # expects 1
+  # /proc/self/uid_map is column-padded ("%10u %10u %10u"), so match on whitespace runs.
   ssh root@192.168.9.12 "pct exec ${vmid} -- cat /proc/self/uid_map" \
     | tee /dev/stderr \
-    | grep -q "500000000 500000000 99999999"
+    | grep -Eq "^\s*500000000\s+500000000\s+99999999"
 
   echo "=== Checking SSH reachability from workstation ==="
   local ip
