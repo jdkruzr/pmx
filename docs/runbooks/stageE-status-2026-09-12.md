@@ -275,7 +275,35 @@ each to `/tmp/stageE-tests/<harness>.log`. Neptune's real `state/guests.jsonl`
   EPEL. Harness asks for `jq,nano` (base repos) on the Rocky container
   instead. Untracked leftovers (build died before `post_create_hook`) were
   cleaned by hand, mirroring `destroy.yml`.
-- **Run 18** (`test_kitchen_sink`): _pending_.
+- **Run 18**: `test_kitchen_sink.sh` **passed both halves.** All six
+  harnesses are green: lifecycle, state log, create VM, create LXC, AD join
+  (4 combinations), kitchen sink (VM + LXC with CephFS).
+
+Post-run sweep (04:15 CDT): no `pmxtest` guests, entities, passthrough
+mounts, fstab lines or pmxcfs secrets on the cluster; MDS admin sessions
+still exactly the four nodes. Neptune's state log restored as the original
+7 records + the 51 test records, then every record for a test guest that no
+longer exists tombstoned (harnesses that tear down with raw `qm`/`pct`
+never tombstone); only `ntfy` is live. Those raw teardowns had also left
+computer objects on the DC (`PMXTEST-UBUNTU-$`, `PMXTEST-ROCKY-V$`,
+`PMXTEST-ROCKY-L$` — NetBIOS names truncate to 15 chars and collide across
+runs) and A/PTR records; all removed with `dc_dereg.sh`, and
+`test_ad_join.sh` now tears down via `pmx destroy` so this stops recurring.
+
+### Defects the run found and fixed (none in the CephX code itself)
+
+| Where | Defect | Fix |
+|---|---|---|
+| `create_vm` + seed roles | No CPU type → `kvm64` (x86-64-v1) under QEMU 11; EL9 panics at init (`Fatal glibc error: CPU does not support x86-64-v2`). **The one true upgrade regression.** | `--cpu x86-64-v2-AES` on clones and templates; 9000/9001 pinned by hand |
+| `create_vm` | `network-get-interfaces` raced the DHCP lease once Rocky booted fast | retry until an IPv4 appears |
+| `create_lxc` | Rocky LXC template has no `openssh-server`; configure play never reached a Rocky container | `pct exec` installs/enables sshd, `wait_for` 22 |
+| `common/rocky` | No cloud-init wait; PVE's `package_upgrade: true` ran dnf concurrently with the role's | wait, and plain `dnf -y upgrade --refresh` |
+| `ad_join_rocky` | `--stdin-password` unknown to EL9 realmd; EL9 DEFAULT policy vs RC4-only KDC | drop the flag; `DEFAULT:AD-SUPPORT-LEGACY`; `crypto-policies-scripts` for LXC |
+| `ad_join_common` | `override_space` in the wrong sssd section since April; `reload ssh` handler named Ubuntu's unit | moved to `[sssd]`; sudoers has both group spellings; handler OS-aware |
+| `post_create_hook` | create records lacked `destroyed_at` | emitted as `""` |
+| `mount_cephfs/lxc` | pmxcfs rejects the copy module's atomic rename | direct content-aware write |
+| deps | `netaddr` (ansible.utils ipmath) never declared | `pyproject.toml` |
+| harnesses | pvestatd lag on the orphan case; padded uid_map grep; `which` on Rocky; sudoers check without sudo; `.80` is bifrost; EPEL-only `htop` on Rocky; raw teardown | all fixed |
 
 ## Health at the end
 
