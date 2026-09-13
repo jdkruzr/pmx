@@ -1,9 +1,11 @@
 ---
+# Plain dnf rather than the dnf module: when an upgrade obsoletes a package the
+# module completes the transaction and then fails with "An rpm exception
+# occurred: package not installed" (seen on a fresh Rocky 9 clone going to 9.8).
 - name: dnf upgrade
-  ansible.builtin.dnf:
-    name: "*"
-    state: latest
-    update_cache: true
+  ansible.builtin.command: dnf -y upgrade --refresh
+  register: dnf_upgrade
+  changed_when: "'Nothing to do' not in dnf_upgrade.stdout"
 
 - name: Install base packages
   ansible.builtin.dnf:

@@ -183,7 +183,12 @@ each to `/tmp/stageE-tests/<harness>.log`. Neptune's real `state/guests.jsonl`
   on a fresh QEMU process). Fixed (`create_vm` sets `--cpu x86-64-v2-AES` on
   every clone; both seed roles bake it into templates); templates 9000/9001
   pinned by hand. All four nodes are Zen 4, so v2-AES migrates freely.
-- **Run 5** (`test_create_vm` onward): _pending_.
+- **Run 5** (`test_create_vm` onward): Ubuntu VM passed; the Rocky VM now
+  booted (CPU fix works) but failed one step later: "did not acquire an IPv4
+  address via guest agent". The agent answered `ping` before DHCP finished
+  and the single `network-get-interfaces` query saw no address; a minute
+  later the VM had `.125`. Fixed: the query retries until an IPv4 appears.
+- **Run 6** (`test_create_vm` onward): _pending_.
 
 ## Health at the end
 
