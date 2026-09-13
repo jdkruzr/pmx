@@ -228,7 +228,22 @@ each to `/tmp/stageE-tests/<harness>.log`. Neptune's real `state/guests.jsonl`
   throughout `id`); the harness then failed its sudoers check, which it ran
   as the unprivileged `ansible` user against root-only `/etc/sudoers.d`.
   Harness fix: sudo prefix on VMs (as `pmx verify` already does).
-- **Run 12** (`test_ad_join` → `test_kitchen_sink`): _pending_.
+- **Run 12**: Ubuntu VM and Ubuntu LXC joined and passed every check. The
+  Rocky VM's `realm join` failed (output hidden by `no_log`). By hand with
+  `-v`: first `realm: Unknown option --stdin-password` — Rocky's realmd
+  0.17.1-2.el9 lacks the flag Ubuntu's build has (the Ubuntu role never used
+  it; `--unattended` reads stdin anyway). With that removed, the real error:
+  `KDC has no support for encryption type`. EL9's DEFAULT crypto policy
+  permits only AES Kerberos enctypes; the Zentyal Samba 4.19 KDC offers the
+  join account (`jtd`, no `msDS-SupportedEncryptionTypes`) RC4 only. Plain
+  `AD-SUPPORT` did not help (it no longer enables RC4 since RHEL 9.4);
+  `DEFAULT:AD-SUPPORT-LEGACY` adds `arcfour-hmac-md5` and the join succeeded.
+  Fixed in `ad_join_rocky`. **Operator follow-up (DC side, better fix):** give
+  the join account and computer objects AES keys — e.g. set
+  `msDS-SupportedEncryptionTypes = 24` (AES128+AES256) or `28` (RC4+AES) on
+  `jtd` via `samba-tool`, or `kdc default domain supported enctypes = 28` on
+  the DC — after which the LEGACY subpolicy can be dropped again.
+- **Run 13** (`test_ad_join` → `test_kitchen_sink`): _pending_.
 
 ## Health at the end
 
