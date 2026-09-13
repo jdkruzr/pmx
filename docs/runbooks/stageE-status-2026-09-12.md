@@ -193,10 +193,17 @@ each to `/tmp/stageE-tests/<harness>.log`. Neptune's real `state/guests.jsonl`
   with the dnf module's "An rpm exception occurred: package not installed".
   Re-running the same module call ad hoc against that guest reported
   "Nothing to do" and the guest was at 9.8, so the transaction had applied
-  and the module tripped over a package the upgrade obsoleted (known module
-  defect). Fixed: the Rocky upgrade is a plain `dnf -y upgrade --refresh`
-  with `changed` derived from its output.
-- **Run 7** (`test_create_vm` onward): _pending_.
+  and I first blamed a package the upgrade obsoleted. Changed the task to a
+  plain `dnf -y upgrade --refresh`.
+- **Run 7**: plain dnf failed differently after 2 min 50 s:
+  `No such file or directory: /var/cache/dnf/.../packages/bluez-*.rpm` — a
+  downloaded package vanished mid-transaction. **Actual root cause:** PVE's
+  cloud-init user-data sets `package_upgrade: true`, so a fresh VM runs its
+  own `dnf upgrade` at first boot, concurrently with the role's. Ubuntu's task
+  list has always begun with `cloud-init status --wait`; Rocky's never did.
+  Fixed: Rocky now waits for cloud-init too (plain dnf kept; it is the more
+  robust of the two either way).
+- **Run 8** (`test_create_vm` onward): _pending_.
 
 ## Health at the end
 

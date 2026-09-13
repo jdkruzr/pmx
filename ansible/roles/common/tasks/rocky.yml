@@ -9,9 +9,8 @@
   failed_when: false
   when: guest_kind == "vm"
 
-# Plain dnf rather than the dnf module: when an upgrade obsoletes a package the
-# module completes the transaction and then fails with "An rpm exception
-# occurred: package not installed" (seen on a fresh Rocky 9 clone going to 9.8).
+# Plain dnf rather than the dnf module: its failure output is the real dnf
+# output, and `changed` follows "Nothing to do" rather than module heuristics.
 - name: dnf upgrade
   ansible.builtin.command: dnf -y upgrade --refresh
   register: dnf_upgrade
