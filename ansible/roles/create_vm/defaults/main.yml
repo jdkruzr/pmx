@@ -3,3 +3,9 @@ default_storage: bwrx
 default_bridge: vmbr0
 static_gw: ""
 ssh_wait_timeout: 180
+# CPU model for every VM pmx builds. QEMU's implicit default (kvm64, "Common KVM
+# processor") is x86-64-v1; EL9 userland requires x86-64-v2 and panics at init
+# without it ("Fatal glibc error: CPU does not support x86-64-v2", seen on
+# PVE 9.2 / QEMU 11). x86-64-v2-AES is PVE's own recommended baseline and
+# migrates across all four (Zen 4) nodes.
+vm_cpu_type: x86-64-v2-AES

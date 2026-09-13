@@ -65,6 +65,7 @@
   ansible.builtin.command: "{{ item }}"
   loop:
     - "qm set {{ new_vmid }} --cores {{ cores }}"
+    - "qm set {{ new_vmid }} --cpu {{ vm_cpu_type }}"
     - "qm set {{ new_vmid }} --memory {{ memory }}"
     - "qm set {{ new_vmid }} --net0 virtio,bridge={{ default_bridge }}"
     - "qm set {{ new_vmid }} --ipconfig0 {{ 'ip=' + static_ip + ',gw=' + effective_static_gw if static_ip else 'ip=dhcp' }}"

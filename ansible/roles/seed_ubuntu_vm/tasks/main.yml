@@ -64,6 +64,7 @@
     - "qm set {{ ubuntu_template_vmid }} --boot c --bootdisk scsi0"
     - "qm set {{ ubuntu_template_vmid }} --serial0 socket --vga serial0"
     - "qm set {{ ubuntu_template_vmid }} --agent enabled=1"
+    - "qm set {{ ubuntu_template_vmid }} --cpu x86-64-v2-AES"
   changed_when: true
 
 - name: Convert to template

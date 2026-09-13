@@ -158,8 +158,17 @@ each to `/tmp/stageE-tests/<harness>.log`. Neptune's real `state/guests.jsonl`
   writer did, and the harness asserts a live record carries it as `""`.
   Fixed (`95b354e`): both writers now produce the same record shape. The
   leftover container was destroyed with `pmx destroy` (tombstoned cleanly).
-- **Run 3** (`test_state_log` → `test_create_vm` → `test_create_lxc` →
-  `test_ad_join` → `test_kitchen_sink`): _pending_.
+- **Run 3** (`test_state_log` onward): the Ubuntu container passed; the Rocky
+  container was `UNREACHABLE` at Gathering Facts, "connection refused" on 22.
+  Inside it: `Unit sshd.service could not be found` — the only Rocky 9 LXC
+  template on offer (`rockylinux-9-default_20240912`) ships **without
+  openssh-server**, and `create_lxc` never installed one, so a Rocky container
+  has never been reachable by the configure play. Not an upgrade regression,
+  just never exercised to completion. Fixed (`4fb19f8`): after the IP is
+  known, `pct exec` installs/enables sshd (Rocky: `dnf openssh-server` +
+  `sshd`; Ubuntu: ensure `ssh`) and the role `wait_for`s port 22 before
+  `add_host`. Leftovers destroyed with `pmx destroy` (one tracked, one not).
+- **Run 4** (`test_state_log` onward): _pending_.
 
 ## Health at the end
 
