@@ -97,7 +97,7 @@ aes256k service cipher — and read 13 entries. Every existing guest mount
 |---|---|---|
 | `AUTH_INSECURE_SERVICE_KEY_TYPE` | **cleared** | — |
 | `AUTH_INSECURE_SERVICE_TICKETS` | **cleared** | — |
-| `AUTH_INSECURE_ROTATING_SERVICE_KEY_TYPE` | WRN | self-clears when the mon's rotating keys next regenerate (≤ `auth_service_ticket_ttl` = 3600 s). `ceph auth wipe-rotating-service-keys` forces it now but invalidates every client's tickets at once — safe per the `min()` logic, but a needless reconnect storm. Chose to wait. |
+| `AUTH_INSECURE_ROTATING_SERVICE_KEY_TYPE` | WRN | self-clears when the mon's rotating keys have all regenerated — **in practice two to three `auth_service_ticket_ttl` periods (it cleared between 17:19 and 18:49 CDT, not within one hour as first assumed)**. `ceph auth wipe-rotating-service-keys` forces it now but invalidates every client's tickets at once — safe per the `min()` logic, but a needless reconnect storm. Chose to wait. |
 | `AUTH_INSECURE_CLIENT_KEY_TYPE` | WRN (1) | `client.admin` — the guests' key on 6.8 kernels |
 | `AUTH_INSECURE_KEYS_ALLOWED` / `_CREATABLE` | WRN | `aes` must stay allowed while `client.admin` is `aes` |
 

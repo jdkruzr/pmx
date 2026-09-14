@@ -170,6 +170,29 @@ blockdev) carries `"user":"bwrx"`. Mon sessions: 12 `client.bwrx`, 10
 `client.admin` (the four nodes' CephFS mounts + transient CLI/pvestatd).
 No VM holds the admin key any more.
 
+**Step 3 — `client.pve-cephfs` (19:5x CDT).** Pre-check: a throwaway
+`client.aeskt --key_type aes256k` (`/template r`) kernel-mounted fine on the
+7.0.14-16-pve node kernel, so the storages go straight to aes256k. Minted
+with `fs authorize cephfs client.pve-cephfs / rw --key_type aes256k`, key
+written to `/etc/pve/priv/ceph/cephfs.secret`, `pvesm set cephfs --username
+pve-cephfs`. Then per node (cerritos, discovery, excelsior, kelvin): `fuser`
+clear, `umount /mnt/pve/cephfs`, pvestatd remounted it within 5–10 s as
+`name=pve-cephfs`, `ls` responsive. MDS session list: four `client.pve-cephfs`
+sessions, **zero `client.admin` anywhere**.
+
+**Step 4 — `client.admin` → aes256k.** Backup of the keyring file taken;
+`ceph auth rotate client.admin --key_type aes256k` printed the new key (the
+`mon.` keyring on cerritos was the prepared fallback for reading it back);
+new key + the existing caps lines written to
+`/etc/pve/priv/ceph.client.admin.keyring` (pmxcfs, so all nodes at once).
+Verified: key type 2, file == auth DB, `ceph -s` from every node with its own
+copy, zero pvestatd/pvedaemon auth errors, `bwrx` and `cephfs` active on all
+four nodes. `client.admin` is now held by nothing but the CLI.
+
+Final client entities and key types: `admin` **2**, `bwrx` 2, `pve-cephfs` 2,
+`crash` 2, `bootstrap-*` 2; `ceres`, `neptune`, `pluto`, `tauron`, `velorum`
+1 (aes, until their kernels move — see Next).
+
 ## Integration run
 
 From neptune (`/home/sysop/proxmox-manage`, `PMX_LIVE=1`, AD password from a
@@ -342,9 +365,41 @@ runs) and A/PTR records; all removed with `dc_dereg.sh`, and
 | deps | `netaddr` (ansible.utils ipmath) never declared | `pyproject.toml` |
 | harnesses | pvestatd lag on the orphan case; padded uid_map grep; `which` on Rocky; sudoers check without sudo; `.80` is bifrost; EPEL-only `htop` on Rocky; raw teardown | all fixed |
 
-## Health at the end
+## Health at the end (20:05 CDT 2026-09-13)
 
-_pending_.
+```
+HEALTH_WARN 5 auth client entities with insecure key types;
+            Monitors are configured to allow auth using insecure key types;
+            Monitors are configured to allow creation of insecure key types;
+            6 OSD(s) experiencing slow operations in BlueStore
+```
+
+- `AUTH_INSECURE_CLIENT_KEY_TYPE` — exactly the five guest keys (`ceres`,
+  `neptune`, `pluto`, `tauron`, `velorum`), all on `aes` because their Ubuntu
+  24.04 kernels (6.8) cannot use aes256k client keys. Expected; left visible
+  by operator decision. Clears with the kernel work in "Next".
+- `AUTH_INSECURE_KEYS_ALLOWED` / `_CREATABLE` — `auth_allowed_ciphers` must
+  keep `aes` while those five exist. Same exit condition.
+- `BLUESTORE_SLOW_OP_ALERT` (new in Tentacle) — six OSDs saw at least one slow
+  BlueStore op in the last 24 h (`bluestore_slow_ops_warn_lifetime` 86400,
+  threshold 1). OSD latencies are 0–38 ms and client I/O idle at the time of
+  writing; this is the footprint of 18 integration-harness runs, 22 live
+  migrations and the 02:00–03:00 PBS jobs, and ages out on its own.
+- The D+ note claiming `AUTH_INSECURE_ROTATING_SERVICE_KEY_TYPE` self-clears
+  within one `auth_service_ticket_ttl` was wrong: it cleared between 17:19
+  and 18:49 CDT, roughly two to three ticket lifetimes after the cipher change.
+
+Everything else: 97 PGs `active+clean`, all 11 VMs running on their home
+nodes, all five CephFS clients responsive, `pvesm status` active for `bwrx`
+and `cephfs` on all four nodes.
+
+Operator items left open after this session:
+
+- Delete `~/.config/pmx/ad_password` on neptune (created for the harness run).
+- Globus: remove the stale admin artefacts in `/etc/ceph` (dead keys now) and
+  install `qemu-guest-agent`; sysop's sudo needs a password there.
+- DC side: give AD accounts AES Kerberos keys so Rocky guests no longer need
+  the `AD-SUPPORT-LEGACY` crypto subpolicy (see Run 12 above).
 
 ## Next: guest kernels → aes256k → drop `aes`
 
