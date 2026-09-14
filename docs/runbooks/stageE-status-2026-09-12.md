@@ -43,7 +43,7 @@ Commit: _see git log for "Stage E: per-guest CephX identities"_.
 
 - **`mount_cephfs` mints `client.<guest_name>` on the node** (`tasks/cephx.yml`):
   `ceph auth get` decides existence; absent → `ceph fs authorize cephfs
-  client.<name> <subpath> rw ... --key_type aes -o /dev/null`; present with
+  client.<name> <subpath> rw ... --key_type {{ cephx_key_type }} -o /dev/null`; present with
   different caps → `ceph auth caps` with the same strings `fs authorize`
   writes (filter `pmx_cephx_caps`); then `ceph auth get-key` → secret fact
   (`no_log`). VM path writes only `/etc/ceph/<name>.secret` (0600), deletes any
@@ -64,7 +64,8 @@ Commit: _see git log for "Stage E: per-guest CephX identities"_.
   node-local), reserved Ceph names are refused, and `--cephfs` refuses a
   pre-existing `client.<name>`.
 - **Config**: `ceph_conf_path`/`ceph_secret_path` removed (a config still
-  carrying them is refused with a hint); `cephx_key_type` added (default `aes`).
+  carrying them is refused with a hint); `cephx_key_type` added (`aes` during
+  the migration, `aes256k` since the finale).
 - Stage E extras: `rpm-reef` → `rpm-tentacle`; `discard=on` on seeded
   templates and attached RBD disks; `fstrim.timer` enabled by `common`.
 - Tests: 115 unit tests green; `test_kitchen_sink.sh` now asserts identity,
@@ -425,9 +426,56 @@ Ubuntu guests.
 | tauron | 7.0.0-31 | 20.2.4 | aes256k (2) | Nextcloud `status.php` OK before and after |
 | velorum | 7.0.0-31 | 20.2.4 | aes256k (2) | filestash containers up; root mount OK |
 | neptune | 7.0.0-31 | 20.2.4 | aes256k (2) | ultrabridge restarted around the remount, sees its binds |
-| ceres | _in progress_ | | | NVIDIA 595.84 DKMS confirmed built for 7.0.0-31 before rebooting |
+| ceres (physical) | 7.0.0-31 | 20.2.4 | aes256k (2) | NVIDIA 595.84 DKMS confirmed built for 7.0.0-31 before rebooting; back in 25 s with GPU + llama-server; rotation + remount OK |
 
-## Next: drop `aes`
+**Fresh-guest proof and the second plan change.** A throwaway `pmx new
+--cephfs` under `cephx_key_type: aes256k` failed on the template's 6.8 kernel
+with `libceph: Failed to parse secret: -524` (ENOTSUPP) — with or without the
+mount helper. So a 7.0 kernel is a hard requirement for aes256k client keys,
+not just Tentacle userspace. The `common` role now installs
+`linux-generic-hwe-24.04` on Ubuntu VMs and reboots onto it (only when not
+already running the newest installed kernel) before `mount_cephfs`; the
+re-run built, rebooted, mounted as `client.pmxtest-aes256k`, verified, and
+was destroyed through pmx. Rocky VMs (EL9 5.14) can never use aes256k client
+keys; `--cephfs` on a Rocky VM is unsupported until a ceph-fuse path exists
+(none in use, none built by a harness).
+
+## Finale: `mon.` rotation and `auth_allowed_ciphers = aes256k`
+
+The Tentacle docs' migration order puts the monitor key first, and the D+
+daemon rotation had skipped it (`mon.` is not listed by `ceph auth ls`; it was
+still `aes`). Executed 2026-09-13 ~22:20 CDT from
+`/root/stageE-backup-2026-09-12/mon-rotate.sh` on cerritos: previous `mon.`
+key backed up; `ceph auth rotate --key_type aes256k mon.` (type 2); new key +
+`caps mon = "allow *"` written to `/var/lib/ceph/mon/ceph-<n>/keyring` on all
+four monitors (old files kept as `keyring.pre-aes256k`); `ceph-mon` restarted
+one at a time, leader last (kelvin, excelsior, cerritos, discovery), each back
+in full quorum within 2 s; then `ceph mon set auth_allowed_ciphers aes256k`.
+Result: `auth_service_cipher aes256k / auth_allowed_ciphers aes256k /
+auth_preferred_cipher aes256k`, **`HEALTH_OK` on every node**, 97 PGs
+`active+clean`, 11 VMs running, both storages active on all nodes, every
+guest mount responsive, MDS sessions: ceres 2, neptune 3, pluto 1,
+pve-cephfs 4, tauron 2, velorum 1 — and none as admin. Every CephX entity in
+the cluster, `mon.` included, is aes256k. The documented escape hatch, should
+a cipher lockout ever occur, is `mon_auth_emergency_allowed_ciphers` on the
+monitors.
+
+pmx's default `cephx_key_type` is now `aes256k` (config, group_vars, role
+defaults), matching the cluster.
+
+## Open items after the finale
+
+- Delete `~/.config/pmx/ad_password` on neptune (created for the harness run).
+- Globus: remove the stale admin artefacts in `/etc/ceph` (dead keys) and
+  install `qemu-guest-agent`; sysop's sudo needs a password there.
+- DC side: give AD accounts AES Kerberos keys so Rocky guests no longer need
+  the `AD-SUPPORT-LEGACY` crypto subpolicy.
+- Rocky VM + `--cephfs`: needs a ceph-fuse (userspace) mount path; no such
+  guest exists today.
+- The `BLUESTORE_SLOW_OP_ALERT` from the day's load had already aged out by
+  the finale.
+
+## Superseded: the original "Next" plan
 
 Ubuntu 24.04 offers the 26.04 kernel as HWE: `linux-generic-hwe-24.04` =
 `7.0.0-31.31~24.04.1` (verified on tauron). No release upgrade needed; the

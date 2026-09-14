@@ -17,9 +17,9 @@ ceph_mons:
   - 192.168.9.12
   - 192.168.9.13
   - 192.168.9.14
-# Key type for those identities. Guest kernels up to 6.8 only speak aes; set
-# aes256k once every CephFS guest runs a 7.0+ kernel. Optional, default aes.
-# cephx_key_type: aes
+# Key type for those identities. Optional, default aes256k (the only cipher
+# the cluster allows); `aes` only works against a cluster that still allows it.
+# cephx_key_type: aes256k
 state_log_path: state/guests.jsonl
 # ssh target for the Samba AD DC. `pmx destroy` ssh'es here to remove a guest's
 # DNS A/PTR and AD computer object with the DC's own root tooling (samba-tool /

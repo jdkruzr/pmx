@@ -71,20 +71,20 @@ class TestConfigLoad:
         assert config.ceph_mons == ["192.168.9.11", "192.168.9.12"]
         assert config.state_log_path == "state/guests.jsonl"
 
-    def test_cephx_key_type_defaults_to_aes(self, tmp_path, monkeypatch):
-        """cephx_key_type is optional and defaults to aes (what 6.8 guest kernels speak)."""
+    def test_cephx_key_type_defaults_to_aes256k(self, tmp_path, monkeypatch):
+        """cephx_key_type is optional and defaults to aes256k (the only cipher the cluster allows)."""
         config_file = tmp_path / "config.yml"
         config_file.write_text(_VALID_CONFIG)
         monkeypatch.setattr("pmx.config.CONFIG_PATH", config_file)
 
-        assert load().cephx_key_type == "aes"
+        assert load().cephx_key_type == "aes256k"
 
     def test_cephx_key_type_can_be_set(self, tmp_path, monkeypatch):
         config_file = tmp_path / "config.yml"
-        config_file.write_text(_VALID_CONFIG + "cephx_key_type: aes256k\n")
+        config_file.write_text(_VALID_CONFIG + "cephx_key_type: aes\n")
         monkeypatch.setattr("pmx.config.CONFIG_PATH", config_file)
 
-        assert load().cephx_key_type == "aes256k"
+        assert load().cephx_key_type == "aes"
 
     def test_removed_ceph_keys_abort_with_hint(self, tmp_path, monkeypatch, capsys):
         """A config still carrying the old workstation-Ceph-client keys is refused,

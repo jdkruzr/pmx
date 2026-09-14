@@ -44,9 +44,11 @@ class Config:
     # so existing configs keep loading; set it to enable DC-side teardown.
     dc_ssh_host: str = ""  # e.g. "sysop@192.168.9.20"
     # CephX key type for the per-guest `client.<name>` identities pmx mints.
-    # Guest kernels up to 6.8 only speak `aes`; flip to `aes256k` once every
-    # CephFS-mounting guest runs a kernel that supports it (7.0+).
-    cephx_key_type: str = "aes"
+    # The cluster's auth_allowed_ciphers is aes256k only (Stage E, 2026-09-13);
+    # the `common` role puts Ubuntu VMs on the HWE 7.0 kernel, which is what
+    # aes256k client keys need. `aes` is only useful against a cluster that
+    # still allows it.
+    cephx_key_type: str = "aes256k"
 
 
 def load() -> Config:

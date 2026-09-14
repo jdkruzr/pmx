@@ -111,10 +111,15 @@ are single-purpose and composable; playbooks are thin orchestrators.
   computer object is not fatal. Its CephX teardown is gated on a non-empty
   `cephx_entity` (pmx passes `""` for untracked guests) and never `rm -rf`s a
   passthrough directory that still has something mounted beneath it.
-- `mount_cephfs` must pass `--key_type aes` while any CephFS guest runs a
-  ≤6.8 kernel: the monmap prefers aes256k and an aes256k secret is rejected by
-  those guests' `mount.ceph`. A kernel CephFS mount authenticates only at
-  mount time, so a changed secret triggers a real unmount, not a remount.
+- aes256k CephX client keys need a 7.0 kernel (6.8 fails with
+  `libceph: Failed to parse secret: -524`) **and** Tentacle's `mount.ceph`
+  (Ubuntu's Squid 19.2.3 build mangles the blob). `common` installs the HWE
+  kernel and reboots Ubuntu VMs before `mount_cephfs`; `mount_cephfs` takes
+  ceph-common from Ceph's Tentacle repo. The cluster allows aes256k only.
+  Rocky VMs (EL9 5.14 kernel) cannot use aes256k keys — `--cephfs` on a Rocky
+  VM is unsupported until a userspace (ceph-fuse) path exists. A kernel
+  CephFS mount authenticates only at mount time, so a changed secret triggers
+  a real unmount, not a remount.
 - Host-side passthrough mounts carry `x-systemd.requires=pve-cluster.service`
   because their secret lives on pmxcfs, which is not up when `_netdev` mounts
   run at node boot.

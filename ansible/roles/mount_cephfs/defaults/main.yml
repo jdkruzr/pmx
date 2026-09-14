@@ -11,10 +11,10 @@ ceph_mons:
   - 192.168.9.14
 cephfs_fs_name: cephfs
 
-# Key type for the minted identity. Guest kernels up to 6.8 only speak `aes`;
-# an `aes256k` key is rejected by their mount.ceph. Flip to aes256k once every
-# CephFS guest runs a 7.0+ kernel (see docs/runbooks/stageE-status-2026-09-12.md).
-cephx_key_type: aes
+# Key type for the minted identity. The cluster allows aes256k only; a 7.0
+# kernel (common role installs the HWE kernel on Ubuntu VMs) and Tentacle's
+# mount.ceph (repo below) are what a guest needs to use it.
+cephx_key_type: aes256k
 
 # VM path: kernel mount inside the guest with the guest's own secret.
 # recover_session=clean lets the kernel client re-establish a session cleanly if

@@ -347,7 +347,7 @@ class TestCmdNew:
         assert "ceph_secret_path" not in extra_vars
         assert "ceph_conf_path" not in extra_vars
         assert extra_vars["ceph_mons"] == ["192.168.9.11", "192.168.9.12"]
-        assert extra_vars["cephx_key_type"] == "aes"
+        assert extra_vars["cephx_key_type"] == "aes256k"
         assert extra_vars["dc_ssh_host"] == "sysop@192.168.9.20"
 
     @_patched

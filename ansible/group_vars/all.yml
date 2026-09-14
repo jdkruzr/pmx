@@ -15,5 +15,5 @@ ceph_mons:
   - 192.168.9.13
   - 192.168.9.14
 cephfs_fs_name: cephfs
-# aes until every CephFS guest runs a kernel that speaks aes256k (7.0+).
-cephx_key_type: aes
+# The cluster allows aes256k only; Ubuntu VMs get the HWE 7.0 kernel first.
+cephx_key_type: aes256k
