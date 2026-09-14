@@ -463,13 +463,42 @@ monitors.
 pmx's default `cephx_key_type` is now `aes256k` (config, group_vars, role
 defaults), matching the cluster.
 
+## Follow-up 2026-09-14: AES Kerberos keys on the DC (Rocky joins without RC4)
+
+Why Rocky needed `AD-SUPPORT-LEGACY`: the join account's stored credentials
+held only `Primary:Kerberos` (RC4) — no `Primary:Kerberos-Newer-Keys`. Setting
+`msDS-SupportedEncryptionTypes = 28` on the account changed nothing, and an
+administrative same-password reset regenerated an RC4 key only (keytab export:
+enctype 23 alone). Root cause, from Samba's `password_hash.c`:
+`do_newer_keys = (dsdb_functional_level(ldb) >= DS_DOMAIN_FUNCTION_2008)` —
+Zentyal had provisioned the domain at **Windows 2003**, so no account in the
+domain had ever had AES keys.
+
+Done on galactica (the only DC, Zentyal 8.1 / Samba 4.19.5), with the
+operator's go because it is one-way:
+
+1. `samba-tool domain level raise --domain-level=2008_R2 --forest-level=2008_R2`
+   (the level the DC itself reports it runs), then `systemctl restart
+   samba-ad-dc`; DNS answered again within ~10 s.
+2. Same-password reset of the join account → keytab export now shows enctypes
+   17, 18, 23.
+3. Proof from neptune with a krb5.conf permitting only AES: `kinit jtd`
+   succeeds (session key aes256-cts-hmac-sha1-96); `kvno` for
+   `ldap/galactica` and `host/galactica` succeed with AES session keys. The
+   tickets themselves stay RC4-wrapped until Samba rotates the DC's own machine
+   password (invisible to clients). Existing joined hosts likewise keep RC4
+   machine keys until their sssd renewal and gain AES then.
+4. `ad_join_rocky` no longer sets `DEFAULT:AD-SUPPORT-LEGACY` (nor installs
+   `crypto-policies-scripts`); `test_ad_join.sh` re-run as proof: **all four
+   combinations joined and verified** (06:09–06:34 CDT 2026-09-14), the Rocky
+   VM and container under EL9's DEFAULT crypto policy; every guest torn down
+   through `pmx destroy`, no leftovers on the cluster or the DC.
+
 ## Open items after the finale
 
 - Delete `~/.config/pmx/ad_password` on neptune (created for the harness run).
 - Globus: remove the stale admin artefacts in `/etc/ceph` (dead keys) and
   install `qemu-guest-agent`; sysop's sudo needs a password there.
-- DC side: give AD accounts AES Kerberos keys so Rocky guests no longer need
-  the `AD-SUPPORT-LEGACY` crypto subpolicy.
 - Rocky VM + `--cephfs`: needs a ceph-fuse (userspace) mount path; no such
   guest exists today.
 - The `BLUESTORE_SLOW_OP_ALERT` from the day's load had already aged out by
