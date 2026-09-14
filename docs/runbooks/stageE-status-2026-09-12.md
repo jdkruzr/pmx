@@ -130,8 +130,45 @@ there). After the admin rotation below those files are dead keys anyway.
 
 ## PVE storages and `client.admin`
 
-_pending_ — bwrx → `client.bwrx`, cephfs → `client.pve-cephfs`, VM roll, admin
-rotation.
+Pre-check (verified before anything was touched): `/etc/pve/priv/ceph/bwrx.keyring`
+and `/etc/pve/priv/ceph/cephfs.secret` were byte-identical to the `client.admin`
+key, so every running VM held the admin key in memory via librbd. Rotating
+admin in place would have stalled their disks at the next mon
+re-authentication (`auth_mon_ticket_ttl` 72 h, or any mon reconnect). Hence the
+order: RBD storage first, roll the VMs, then CephFS storage, then admin.
+
+**Step 1 — `client.bwrx` (19:28 CDT 2026-09-13).** Backups in
+`/root/stageE-backup-2026-09-12/` on cerritos (`client.admin` export,
+`bwrx.keyring.pre`, `cephfs.secret.pre`, `storage.cfg.pre`). Minted with
+`ceph auth get-or-create client.bwrx mon 'profile rbd' osd 'profile rbd
+pool=bwrx' mgr 'profile rbd pool=bwrx' --key_type aes256k` (key type 2),
+written to `/etc/pve/priv/ceph/bwrx.keyring`, `pvesm set bwrx --username
+bwrx`. `pvesm status` active on all four nodes, `rbd ls` as the new user
+works, no pvestatd/pvedaemon errors.
+
+**Step 2 — VM roll (out-and-back live migration, one VM at a time).** The
+first three (ntfy, Pluto, vulcan) round-tripped at 45–91 ms downtime. Globus
+then failed to start on the target: `"user":"bwrx"` … `error connecting: No
+such file or directory`. **Finding:** PVE 9 starts VMs on new machine versions
+with QEMU's blockdev syntax, which passes only `user` and
+`conf=/etc/pve/ceph.conf` and leaves the keyring to ceph.conf's
+`[client] keyring = /etc/pve/priv/$cluster.$name.keyring` — i.e.
+`/etc/pve/priv/ceph.client.bwrx.keyring`, which did not exist. VMs still on
+old machine versions (e.g. ntfy, `pc-i440fx-9.0`) use the legacy drive string
+with an explicit `keyring=/etc/pve/priv/ceph/bwrx.keyring`, which is why they
+worked; globus had been rebooted onto `pc-i440fx-11.0` today. Fix: the same
+keyring written to `/etc/pve/priv/ceph.client.bwrx.keyring` as well (pmxcfs,
+cluster-wide); `rbd -n client.bwrx -p bwrx ls` then resolves from every node
+with no `--keyring`. **This is also why the admin rotation must update
+`/etc/pve/priv/ceph.client.admin.keyring`: that is the file blockdev VMs
+authenticate with.** Roll resumed from globus.
+
+Roll result (19:37–19:50 CDT): all 11 VMs out and back, downtime 17–94 ms
+per hop, every VM on its home node. Live QEMU command lines: ten VMs (machine
+`pc-i440fx-9.0`) carry `id=bwrx:keyring=…`, globus (`pc-i440fx-11.0`,
+blockdev) carries `"user":"bwrx"`. Mon sessions: 12 `client.bwrx`, 10
+`client.admin` (the four nodes' CephFS mounts + transient CLI/pvestatd).
+No VM holds the admin key any more.
 
 ## Integration run
 
