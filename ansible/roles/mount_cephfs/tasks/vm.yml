@@ -7,10 +7,28 @@
 - name: Mint or reconcile the guest's CephX identity
   ansible.builtin.include_tasks: cephx.yml
 
+# Ubuntu 24.04's own ceph-common (Squid 19.2.3) ships a mount.ceph that mangles
+# aes256k secrets ("libceph: auth protocol 'cephx' init failed: -22" even on a
+# kernel that supports them). Take ceph-common from Ceph's Tentacle repo, the
+# same release the cluster runs.
+- name: Enable Ceph Tentacle repo (Ubuntu)
+  ansible.builtin.deb822_repository:
+    name: ceph
+    types: deb
+    uris: https://download.ceph.com/debian-tentacle
+    suites: "{{ ansible_distribution_release }}"
+    components: main
+    signed_by: https://download.ceph.com/keys/release.asc
+    state: present
+  register: ceph_apt_repo
+  when: guest_os == 'ubuntu'
+
 - name: Install ceph-common (Ubuntu)
   ansible.builtin.apt:
     name: ceph-common
-    state: present
+    state: latest
+    update_cache: "{{ ceph_apt_repo.changed | default(false) }}"
+    lock_timeout: 300
   when: guest_os == 'ubuntu'
 
 - name: Enable Ceph repo on Rocky
