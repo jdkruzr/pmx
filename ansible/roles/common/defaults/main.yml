@@ -10,3 +10,6 @@ common_base_packages_rocky:
   - curl
   - python3
   - qemu-guest-agent
+# Ubuntu 24.04 HWE metapackage: brings the 26.04 (7.0) kernel, needed for
+# aes256k CephX client keys.
+common_ubuntu_hwe_kernel: linux-generic-hwe-24.04

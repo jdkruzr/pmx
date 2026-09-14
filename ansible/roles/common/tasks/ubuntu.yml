@@ -33,6 +33,28 @@
     enabled: true
   when: guest_kind == "vm"
 
+# The noble cloud image boots a 6.8 kernel, which cannot parse aes256k CephX
+# secrets at all (libceph: Failed to parse secret: -524). The cluster only
+# mints aes256k keys, so a VM needs the HWE 7.0 kernel before mount_cephfs
+# runs. LXCs use the node's kernel and are unaffected.
+- name: Install the HWE kernel (VM only)
+  ansible.builtin.apt:
+    name: "{{ common_ubuntu_hwe_kernel }}"
+    state: present
+    lock_timeout: 300
+  when: guest_kind == "vm"
+
+- name: Find the newest installed kernel
+  ansible.builtin.shell: linux-version list | linux-version sort | tail -1
+  register: newest_kernel
+  changed_when: false
+  when: guest_kind == "vm"
+
+- name: Reboot onto the newest kernel if not already running it
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+  when: guest_kind == "vm" and newest_kernel.stdout | trim != ansible_kernel
+
 # Disks are attached with discard=on; the periodic fstrim hands freed blocks
 # back to RBD so images stop growing monotonically.
 - name: Enable periodic fstrim

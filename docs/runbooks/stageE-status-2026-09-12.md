@@ -401,7 +401,33 @@ Operator items left open after this session:
 - DC side: give AD accounts AES Kerberos keys so Rocky guests no longer need
   the `AD-SUPPORT-LEGACY` crypto subpolicy (see Run 12 above).
 
-## Next: guest kernels → aes256k → drop `aes`
+## Guest kernels → aes256k (executed 2026-09-13 evening CDT)
+
+Per guest: `apt-get install linux-generic-hwe-24.04` (7.0.0-31), reboot
+(`qm reboot`, boot_id-gated; ceres physical), verify kernel + mounts +
+services, then `ceph auth rotate client.<H> --key_type aes256k`, new secret
+over stdin, umount / `mount -a` with services paused, verify.
+
+**Finding that changed the plan:** the throwaway aes256k key test on pluto's
+fresh 7.0.0-31-generic kernel *failed* (`libceph: auth protocol 'cephx' init
+failed: -22`) although the same test had passed on the nodes' 7.0.14-16-pve.
+Bypassing the mount helper (`mount -i … -o secret=`) succeeded, so the kernel
+is fine and the culprit is Ubuntu's `mount.ceph` from ceph-common 19.2.3
+(Squid), which mangles the aes256k blob. Ceph publishes Tentacle for noble
+(`debian-tentacle`, ceph-common 20.2.4-1noble); with that installed the
+normal `secretfile=` mount works. So every guest also got Ceph's Tentacle
+apt repo + ceph-common 20.2.4, and `mount_cephfs` now does the same for
+Ubuntu guests.
+
+| Host | Kernel | ceph-common | `client.<H>` | Result |
+|---|---|---|---|---|
+| pluto | 7.0.0-31 | 20.2.4 | aes256k (2) | mount back at boot, deluge up; rotation + remount OK |
+| tauron | 7.0.0-31 | 20.2.4 | aes256k (2) | Nextcloud `status.php` OK before and after |
+| velorum | 7.0.0-31 | 20.2.4 | aes256k (2) | filestash containers up; root mount OK |
+| neptune | 7.0.0-31 | 20.2.4 | aes256k (2) | ultrabridge restarted around the remount, sees its binds |
+| ceres | _in progress_ | | | NVIDIA 595.84 DKMS confirmed built for 7.0.0-31 before rebooting |
+
+## Next: drop `aes`
 
 Ubuntu 24.04 offers the 26.04 kernel as HWE: `linux-generic-hwe-24.04` =
 `7.0.0-31.31~24.04.1` (verified on tauron). No release upgrade needed; the
